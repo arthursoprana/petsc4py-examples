@@ -108,11 +108,8 @@ PetscErrorCode FormFunctionLocal(DMDALocalInfo *info, PetscReal t, Field *x, Fie
 } 
 
 
-//f(TS ts, PetscReal t, Vec u, Vec u_t, Vec F, ctx);
 #undef __FUNCT__
 #define __FUNCT__ "FormFunction"
-//PetscErrorCode FormFunction(DM da, PetscReal t, Vec X, Vec X_t, Vec F, Params *p)
-//PetscErrorCode FormIFunction(TS ts, PetscReal t, Vec X, Vec Xdot, Vec F, void *ictx)
 PetscErrorCode FormFunction(TS ts, PetscReal t, Vec X, Vec X_t, Vec F, Params *p)
 {
     DMDALocalInfo  info;
@@ -153,33 +150,3 @@ PetscErrorCode FormFunction(TS ts, PetscReal t, Vec X, Vec X_t, Vec F, Params *p
 
     PetscFunctionReturn(0);
 }
-
-/*
-
-#undef __FUNCT__
-#define __FUNCT__ "FormFunctionSteady"
-PetscErrorCode FormFunctionSteady(DM da, Vec X, Vec F, Params *p)
-{
-  DMDALocalInfo  info;
-  Field          *u,*fu;
-  PetscErrorCode ierr;
-  Vec            localX;
-
-  PetscFunctionBegin;
-  ierr = DMGetLocalVector(da,&localX);CHKERRQ(ierr);
-  
-  ierr = DMGlobalToLocalBegin(da,X,INSERT_VALUES,localX);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalEnd(da,X,INSERT_VALUES,localX);CHKERRQ(ierr);
-  ierr = DMDAGetLocalInfo(da,&info);CHKERRQ(ierr);
-  ierr = DMDAVecGetArray(da,localX,&u);CHKERRQ(ierr);
-  ierr = DMDAVecGetArray(da,F,&fu);CHKERRQ(ierr);
-  ierr = FormFunctionLocal(&info,u,fu,p);CHKERRQ(ierr);
-  ierr = DMDAVecRestoreArray(da,localX,&u);CHKERRQ(ierr);
-  ierr = DMDAVecRestoreArray(da,F,&fu);CHKERRQ(ierr);
-  ierr = DMRestoreLocalVector(da,&localX);CHKERRQ(ierr);
-  PetscFunctionReturn(0); 
-}
-
-*/
-
-
