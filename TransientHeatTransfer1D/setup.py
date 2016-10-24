@@ -65,7 +65,7 @@ def configuration(parent_package='',top_path=None):
     INCLUDE_DIRS = []
     LIBRARY_DIRS = []
     LIBRARIES    = []
-    print('inside config')
+
     # PETSc
     import os
     #PETSC_DIR  = os.environ['PETSC_DIR']
@@ -85,7 +85,6 @@ def configuration(parent_package='',top_path=None):
     # PETSc for Python
     import petsc4py
     INCLUDE_DIRS += [petsc4py.get_include()]
-    print(INCLUDE_DIRS)
 
     # Configuration
     from numpy.distutils.misc_util import Configuration
