@@ -9,6 +9,18 @@ import Cython.Compiler.Main
 build_src.Pyrex = Cython
 build_src.have_pyrex = lambda: True
 
+def find_petsc_dir():
+    import petsc4py
+    petsc4py.init()
+    path, arch = petsc4py.lib.getPathArchPETSc()
+    filename = path + '\\petsc.cfg'
+    f = open(filename, 'r')
+
+    petsc_dir = f.readline()[:-1]
+    petsc_arch = f.readline()
+    var_name, petsc_dir = [x.strip() for x in petsc_dir.split('=')]
+    return petsc_dir
+    
 def have_pyrex():
     import sys
     try:
@@ -66,11 +78,12 @@ def configuration(parent_package='',top_path=None):
     LIBRARY_DIRS = []
     LIBRARIES    = []
     print('inside config')
+    
     # PETSc
     import os
-    #PETSC_DIR  = os.environ['PETSC_DIR']
-    PETSC_DIR  = 'D:\\Work\\Miniconda3\\envs\\petsc_debug\\Library\\'
+    PETSC_DIR = find_petsc_dir()    
     PETSC_ARCH = os.environ.get('PETSC_ARCH', '')
+    
     from os.path import join, isdir
     if PETSC_ARCH and isdir(join(PETSC_DIR, PETSC_ARCH)):
         INCLUDE_DIRS += [join(PETSC_DIR, PETSC_ARCH, 'include'),

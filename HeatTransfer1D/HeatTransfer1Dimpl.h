@@ -17,6 +17,6 @@ typedef struct {
 
 PetscErrorCode FormInitGuess(DM da, Vec x, Params *p);
 PetscErrorCode FormFunction(DM da, Vec x, Vec F, Params *p);
-PetscErrorCode FormFunctionLocal(DMDALocalInfo *info,Field **x,Field **f,Params *p);
+PetscErrorCode FormFunctionLocal(DMDALocalInfo *info,Field *x,Field *f,Params *p);
 
 #endif /* !HEATTRANSFER1D_H */
