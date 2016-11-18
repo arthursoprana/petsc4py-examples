@@ -185,8 +185,8 @@ PetscErrorCode FormFunctionLocal2(DMDALocalInfo *info, PetscReal t, Field *x1, F
 	for (i = xints; i<xinte; i++) {
 		/* Temperature */
 		f[i].T = x_t[i].T * dx
-			- 1.0 * (+k * (x2[i + 1].T - x2[i].T) / dx
-				- k * (x2[i].T - x2[i - 1].T) / dx + Q * dx);
+			   - 1.0 * (+k * (x2[i + 1].T - x2[i].T) / dx
+				        -k * (x2[i].T - x2[i - 1].T) / dx + Q * dx);
 	}
 	/*
 	Flop count (multiply-adds are counted as 2 operations)
@@ -223,7 +223,7 @@ PetscErrorCode FormFunction(TS ts, PetscReal t, Vec X, Vec X_t, Vec F, Params *p
 	ierr = DMCompositeGetLocalVectors(dm, &X1_t, &X2_t); CHKERRQ(ierr);
 	ierr = DMCompositeScatter(dm, X_t, X1_t, X2_t); CHKERRQ(ierr);
 	
-	PetscInt nDM, idx;
+	PetscInt nDM;
 	DMCompositeGetNumberDM(dm, &nDM);
 
 	PetscInt total_size = 0;
@@ -290,94 +290,44 @@ PetscErrorCode CompositeSetCoupling(DM dm) {
 /*
 Computes the coupling between DA1 and DA2. This determines the location of each coupling between DA1 and DA2.
 */
-PetscErrorCode FormCoupleLocations(DM dmcomposite, Mat A, PetscInt *dnz, PetscInt *onz, PetscInt __rstart, PetscInt __nrows, PetscInt __start, PetscInt __end)
+PetscErrorCode FormCoupleLocations(DM dm, Mat A, PetscInt *dnz, PetscInt *onz, PetscInt __rstart, PetscInt __nrows, PetscInt __start, PetscInt __end)
 {
-	PetscInt       i, j, cols[3], istart, jstart, in, jn, row, col, M, dim;
+	PetscInt       cols[3], row;
 	PetscErrorCode ierr;
 	DM             da1, da2;
 
 	PetscFunctionBegin;
 
-	// Hack: Bug in petsc file -> packm.c @ line (173)
-	if (!dnz) {
-		PetscFunctionReturn(0);
+	ierr = DMCompositeGetEntries(dm, &da1, &da2); CHKERRQ(ierr);	
+	DMDALocalInfo  info1, info2;
+	ierr = DMDAGetLocalInfo(da1, &info1); CHKERRQ(ierr);
+	ierr = DMDAGetLocalInfo(da2, &info2); CHKERRQ(ierr);
+	int size = info1.mx + info2.mx;
+
+	// Hack: Bug in petsc file -> packm.c @ line (173) and line (129)
+	// First A is NULL, then later dnz and onz are NULL, that's why
+	// we need an IF here.
+	if (!A) {
+		cols[0] = info1.mx;
+		row = info1.mx - 1;
+		ierr = MatPreallocateLocation(A, row, 1, cols, dnz, onz); CHKERRQ(ierr);
+		cols[0] = info1.mx - 1;
+		row = info1.mx;
+		ierr = MatPreallocateLocation(A, row, 1, cols, dnz, onz); CHKERRQ(ierr);
 	}
+	else {
+		PetscScalar values[1];
 
-	ierr = DMCompositeGetEntries(dmcomposite, &da1, &da2); CHKERRQ(ierr);
-	ierr = DMDAGetInfo(da1, 0, &M, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0); CHKERRQ(ierr);
-	ierr = DMDAGetCorners(da1, &istart, &jstart, PETSC_NULL, &in, &jn, PETSC_NULL); CHKERRQ(ierr);
+		row = info1.mx - 1;
+		cols[0] = info1.mx;
+		values[0] = 0.0;
+		ierr = MatSetValues(A, 1, &row, 1, cols, values, INSERT_VALUES); CHKERRQ(ierr);
 
-	/* coupling from physics 1 to physics 2 */
-	row = __rstart;  /* global location of first omega on this process */
-	col = __rstart;  /* global location of first temp on this process */
-
-	// HACK!!!!
-	cols[0] = 5;
-	row = 4;
-	ierr = MatPreallocateLocation(A, row, 1, cols, dnz, onz); CHKERRQ(ierr);
-
-	cols[0] = 4;
-	row = 5;
-	ierr = MatPreallocateLocation(A, row, 1, cols, dnz, onz); CHKERRQ(ierr);
-
-
-	//M = 10;
-	//for (i = 0; i < M; i++) {
-	//	if (i == 0) {
-	//		cols[0] = row + 1;
-	//		cols[1] = row;
-	//		ierr = MatPreallocateLocation(A, row, 2, cols, dnz, onz); CHKERRQ(ierr);
-	//	}
-	//	else if (i == M - 1) {
-	//		cols[0] = row - 1;
-	//		cols[1] = row;
-	//		ierr = MatPreallocateLocation(A, row, 2, cols, dnz, onz); CHKERRQ(ierr);
-	//	}
-	//	else {
-	//		cols[0] = row - 1;
-	//		cols[1] = row + 1;
-	//		cols[2] = row + 1;
-	//		ierr = MatPreallocateLocation(A, row, 3, cols, dnz, onz); CHKERRQ(ierr);
-	//	}
-	//	row += 1;
-	//}
-
-	//for (j = jstart; j<jstart + jn; j++) {
-	//	for (i = istart; i<istart + in; i++) {
-
-	//		/* each omega is coupled to the temp to the left and right */
-	//		if (i == 0) {
-	//			cols[0] = col + 1;
-	//			ierr = MatPreallocateLocation(A, row, 1, cols, dnz, onz); CHKERRQ(ierr);
-	//		}
-	//		else if (i == M - 1) {
-	//			cols[0] = col - 1;
-	//			ierr = MatPreallocateLocation(A, row, 1, cols, dnz, onz); CHKERRQ(ierr);
-	//		}
-	//		else {
-	//			cols[0] = col - 1;
-	//			cols[1] = col + 1;
-	//			ierr = MatPreallocateLocation(A, row, 2, cols, dnz, onz); CHKERRQ(ierr);
-	//		}
-	//		row += 1;
-	//		col += 1;
-	//	}
-	//}
-
-	///* coupling from physics 2 to physics 1 */
-	//col = __rstart;  /* global location of first u on this process */
-	//row = __rstart;  /* global location of first temp on this process */
-	//for (j = jstart; j<jstart + jn; j++) {
-	//	for (i = istart; i<istart + in; i++) {
-
-	//		/* temp is coupled to both u and v at each point */
-	//		cols[0] = col;
-	//		cols[1] = col + 1;
-	//		ierr = MatPreallocateLocation(A, row, 2, cols, dnz, onz); CHKERRQ(ierr);
-	//		row += 1;
-	//		col += 1;
-	//	}
-	//}
-
+		row = info1.mx;
+		cols[0] = info1.mx - 1;
+		values[0] = 0.0;
+		ierr = MatSetValues(A, 1, &row, 1, cols, values, INSERT_VALUES); CHKERRQ(ierr);
+	}
+	
 	PetscFunctionReturn(0);
 }

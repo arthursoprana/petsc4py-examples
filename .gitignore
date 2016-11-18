@@ -1,0 +1,18 @@
+*.pdb
+*.pyd
+*.lib
+*.obj
+*.exp
+CompositeTransientHeatTransfer1D/HeatTransfer1D.c
+CompositeTransientHeatTransfer1D/HeatTransfer1D.pyx
+HeatTransfer1D/HeatTransfer1D.c
+HeatTransfer1D/HeatTransfer1D.pyx
+MultiField1D/MultiField1D.c
+MultiField1D/MultiField1D.pyx
+TransientHeatTransfer1D/HeatTransfer1D.c
+TransientHeatTransfer1D/HeatTransfer1D.pyx
+CompositeTransientHeatTransfer1D/.ipynb_checkpoints/Transient Heat Transfer 1D using petsc4py-checkpoint.ipynb
+FieldSplit/.ipynb_checkpoints/FieldSplitTemplate-checkpoint.ipynb
+HeatTransfer1D/.ipynb_checkpoints/Heat Transfer 1D using petsc4py-checkpoint.ipynb
+MultiField1D/.ipynb_checkpoints/Multi Field 1D using petsc4py-checkpoint.ipynb
+TransientHeatTransfer1D/.ipynb_checkpoints/Transient Heat Transfer 1D using petsc4py-checkpoint.ipynb
