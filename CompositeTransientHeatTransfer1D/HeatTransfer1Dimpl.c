@@ -3,6 +3,8 @@
 
 #undef __FUNCT__
 #define __FUNCT__ "FormInitGuess"
+
+#define NETWORK_SIZE 2
 /*
 FormInitialGuessComp -
 Forms the initial guess for the composite model
@@ -10,21 +12,27 @@ Unwraps the global solution vector and passes its local pieces into the user fun
 */
 PetscErrorCode FormInitGuess(DM dm, Vec X, Params *p)
 {
-    PetscErrorCode ierr;
-    Vec            X1, X2;
-    DM             da1, da2;
-
+    PetscErrorCode ierr;    
+    PetscInt nDM;
+    // TODO: Find a way to dynamically allocate these arrays in c
+    DM  das[NETWORK_SIZE];
+    Vec Xs[NETWORK_SIZE];
+   
     PetscFunctionBegin;
-    ierr = DMCompositeGetEntries(dm, &da1, &da2); CHKERRQ(ierr);
+
+    ierr = DMCompositeGetNumberDM(dm, &nDM); CHKERRQ(ierr);
+    ierr = DMCompositeGetEntriesArray(dm, das); CHKERRQ(ierr);
 
     /* Access the subvectors in X */
-    ierr = DMCompositeGetAccess(dm, X, &X1, &X2); CHKERRQ(ierr);
+    ierr = DMCompositeGetAccessArray(dm, X, nDM, NULL, Xs); CHKERRQ(ierr);
 
     /* Evaluate local user provided function */
-    ierr = FormInitGuessLocal(da1, X1, p); CHKERRQ(ierr);
-    ierr = FormInitGuessLocal(da2, X2, p); CHKERRQ(ierr);
+    for (int i = 0; i < nDM; ++i) {
+        ierr = FormInitGuessLocal(das[i], Xs[i], p); CHKERRQ(ierr);
+    }
 
-    ierr = DMCompositeRestoreAccess(dm, X, &X1, &X2); CHKERRQ(ierr);
+    ierr = DMCompositeRestoreAccessArray(dm, X, nDM, NULL, Xs); CHKERRQ(ierr);
+
     PetscFunctionReturn(0);
 }
 
@@ -210,11 +218,11 @@ PetscErrorCode FormFunction(TS ts, PetscReal t, Vec X, Vec X_t, Vec F, Params *p
     PetscInt nDM;
 
     // TODO: Find a way to dynamically allocate these arrays in c
-    DM  das[2];
-    Vec Xs[2], X_ts[2], Fs[2];
-    Field* u[2];
-    Field* u_t[2];
-    Field* f[2];
+    DM  das[NETWORK_SIZE];
+    Vec Xs[NETWORK_SIZE], X_ts[NETWORK_SIZE], Fs[NETWORK_SIZE];
+    Field* u[NETWORK_SIZE];
+    Field* u_t[NETWORK_SIZE];
+    Field* f[NETWORK_SIZE];
 
     PetscFunctionBegin;
 
@@ -292,15 +300,19 @@ PetscErrorCode FormCoupleLocations(DM dm, Mat A, PetscInt *dnz, PetscInt *onz, P
 {
     PetscInt       cols[3], row;
     PetscErrorCode ierr;
-    DM             da1, da2;
+    PetscInt nDM;
+
+    // TODO: Find a way to dynamically allocate these arrays in c
+    DM  das[NETWORK_SIZE];
 
     PetscFunctionBegin;
+   
+    ierr = DMCompositeGetNumberDM(dm, &nDM); CHKERRQ(ierr);
+    ierr = DMCompositeGetEntriesArray(dm, das); CHKERRQ(ierr);
 
-    ierr = DMCompositeGetEntries(dm, &da1, &da2); CHKERRQ(ierr);    
     DMDALocalInfo  info1, info2;
-    ierr = DMDAGetLocalInfo(da1, &info1); CHKERRQ(ierr);
-    ierr = DMDAGetLocalInfo(da2, &info2); CHKERRQ(ierr);
-    int size = info1.mx + info2.mx;
+    ierr = DMDAGetLocalInfo(das[0], &info1); CHKERRQ(ierr);
+    ierr = DMDAGetLocalInfo(das[1], &info2); CHKERRQ(ierr);
 
     // Hack: Bug in petsc file -> packm.c @ line (173) and line (129)
     // First A is NULL, then later dnz and onz are NULL, that's why
