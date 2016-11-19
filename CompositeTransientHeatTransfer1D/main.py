@@ -27,9 +27,17 @@ def transient_heat_transfer_1D(
     da1 = PETSc.DMDA().create([nx],dof=1, stencil_width=1, stencil_type='star')
     da2 = PETSc.DMDA().create([nx],dof=1, stencil_width=1, stencil_type='star')
     
+	# Create a redundant DM, there is no petsc4py interface (yet)
+	# so we created our own wrapper
+    dmredundant = PETSc.DM().create()
+    dmredundant.setType(dmredundant.Type.REDUNDANT)
+    HeatTransfer1D.redundantSetSize(dmredundant, 0, 1)
+    dmredundant.setUp()
+
     dm = PETSc.DMComposite().create()
     dm.addDM(da1)
     dm.addDM(da2)
+    dm.addDM(dmredundant)
     HeatTransfer1D.compositeSetCoupling(dm)
     
     ts.setDM(dm)
@@ -122,7 +130,7 @@ for final_time in time_intervals:
         )
     sols.append(sol[...])
     
-x = np.linspace(0, wall_length, 2*nx)
+x = np.linspace(0, wall_length, 2*nx + 1)
 for sol in sols:
     plt.plot(x, sol)
 plt.show()

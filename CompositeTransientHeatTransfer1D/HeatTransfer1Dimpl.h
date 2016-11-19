@@ -24,5 +24,6 @@ PetscErrorCode FormInitGuess(DM dm, Vec X, Params *p);
 PetscErrorCode FormFunction(TS ts, PetscReal t, Vec X, Vec X_t, Vec F, Params *p);
 PetscErrorCode FormCoupleLocations(DM dmcomposite, Mat A, PetscInt *dnz, PetscInt *onz, PetscInt __rstart, PetscInt __nrows, PetscInt __start, PetscInt __end);
 PetscErrorCode CompositeSetCoupling(DM dm);
+PetscErrorCode RedundantSetSize(DM dm, PetscMPIInt rank, PetscInt N);
 
 #endif /* !HEATTRANSFER1D_H */

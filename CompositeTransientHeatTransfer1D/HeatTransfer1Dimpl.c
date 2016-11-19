@@ -1,10 +1,18 @@
 #include "HeatTransfer1Dimpl.h"
 #include "include_patch_pack.h"
 
+#define NETWORK_SIZE 3
+
+#undef __FUNCT__
+#define __FUNCT__ "RedundantSetSize"
+PetscErrorCode RedundantSetSize(DM dm, PetscMPIInt rank, PetscInt N) {
+    PetscErrorCode ierr;
+    ierr = DMRedundantSetSize(dm, rank, N); CHKERRQ(ierr);
+    PetscFunctionReturn(0);
+}
+
 #undef __FUNCT__
 #define __FUNCT__ "FormInitGuess"
-
-#define NETWORK_SIZE 2
 /*
 FormInitialGuessComp -
 Forms the initial guess for the composite model
@@ -27,11 +35,11 @@ PetscErrorCode FormInitGuess(DM dm, Vec X, Params *p)
     ierr = DMCompositeGetAccessArray(dm, X, nDM, NULL, Xs); CHKERRQ(ierr);
 
     /* Evaluate local user provided function */
-    for (int i = 0; i < nDM; ++i) {
+    for (int i = 0; i < nDM - 1; ++i) {
         ierr = FormInitGuessLocal(das[i], Xs[i], p); CHKERRQ(ierr);
     }
 
-    ierr = DMCompositeRestoreAccessArray(dm, X, nDM, NULL, Xs); CHKERRQ(ierr);
+    ierr = DMCompositeRestoreAccessArray(dm, X, nDM - 1, NULL, Xs); CHKERRQ(ierr);
 
     PetscFunctionReturn(0);
 }
@@ -229,7 +237,7 @@ PetscErrorCode FormFunction(TS ts, PetscReal t, Vec X, Vec X_t, Vec F, Params *p
     ierr = TSGetDM(ts, &dm); CHKERRQ(ierr);    
     ierr = DMCompositeGetNumberDM(dm, &nDM); CHKERRQ(ierr);
     ierr = DMCompositeGetEntriesArray(dm, das); CHKERRQ(ierr);
-    
+
     /* Access the subvectors in X */    
     ierr = DMCompositeGetLocalVectorsArray(dm, nDM, NULL, Xs); CHKERRQ(ierr);
     ierr = DMCompositeScatterArray(dm, X, Xs); CHKERRQ(ierr);
@@ -239,7 +247,7 @@ PetscErrorCode FormFunction(TS ts, PetscReal t, Vec X, Vec X_t, Vec F, Params *p
 
     // Calculate total size
     PetscInt total_size = 0;
-    for (int i = 0; i < nDM; ++i) {
+    for (int i = 0; i < nDM-1; ++i) {
         ierr = DMDAGetLocalInfo(das[i], &info); CHKERRQ(ierr);
         total_size += info.mx;
     }
@@ -248,7 +256,7 @@ PetscErrorCode FormFunction(TS ts, PetscReal t, Vec X, Vec X_t, Vec F, Params *p
     These are not ghosted so directly access the memory locations in F */
     ierr = DMCompositeGetAccessArray(dm, F, nDM, NULL, Fs); CHKERRQ(ierr);
 
-    for (int i = 0; i < nDM; ++i) {
+    for (int i = 0; i < nDM - 1; ++i) {
         ierr = DMDAVecGetArray(das[i], X_ts[i], &(u_t[i])); CHKERRQ(ierr);
         ierr = DMDAVecGetArray(das[i], Xs[i], &(u[i])); CHKERRQ(ierr);
         ierr = DMDAVecGetArray(das[i], Fs[i], &(f[i])); CHKERRQ(ierr);
@@ -269,7 +277,7 @@ PetscErrorCode FormFunction(TS ts, PetscReal t, Vec X, Vec X_t, Vec F, Params *p
     comp_offset += info.mx;
     ///////////////////////////////////////////////////////
 
-    for (int i = 0; i < nDM; ++i) {
+    for (int i = 0; i < nDM-1; ++i) {
         ierr = DMDAVecRestoreArray(das[i], X_ts[i], &(u_t[i])); CHKERRQ(ierr);
         ierr = DMDAVecRestoreArray(das[i], Xs[i], &(u[i])); CHKERRQ(ierr);
         ierr = DMDAVecRestoreArray(das[i], Fs[i], &(f[i])); CHKERRQ(ierr);
