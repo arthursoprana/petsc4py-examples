@@ -32,6 +32,7 @@ def transient_heat_transfer_1D(
     dmredundant = PETSc.DM().create()
     dmredundant.setType(dmredundant.Type.REDUNDANT)
     HeatTransfer1D.redundantSetSize(dmredundant, 0, 1)
+    dmredundant.setDimension(1)
     dmredundant.setUp()
 
     dm = PETSc.DMComposite().create()

@@ -309,7 +309,7 @@ PetscErrorCode FormCoupleLocations(DM dm, Mat A, PetscInt *dnz, PetscInt *onz, P
     PetscInt       cols[3], row;
     PetscErrorCode ierr;
     PetscInt nDM;
-
+    DMDALocalInfo info;
     // TODO: Find a way to dynamically allocate these arrays in c
     DM  das[NETWORK_SIZE];
 
@@ -322,30 +322,79 @@ PetscErrorCode FormCoupleLocations(DM dm, Mat A, PetscInt *dnz, PetscInt *onz, P
     ierr = DMDAGetLocalInfo(das[0], &info1); CHKERRQ(ierr);
     ierr = DMDAGetLocalInfo(das[1], &info2); CHKERRQ(ierr);
 
+    // Calculate total size
+    int size = 0;
+    for (int i = 0; i < nDM-1; ++i) {
+        ierr = DMDAGetLocalInfo(das[i], &info); CHKERRQ(ierr);
+        size += info.mx;
+    }
+
+    PetscInt N;
+    ierr = DMRedundantGetSize(das[2], NULL, &N); CHKERRQ(ierr);
+    size += N;
+
     // Hack: Bug in petsc file -> packm.c @ line (173) and line (129)
     // First A is NULL, then later dnz and onz are NULL, that's why
     // we need an IF here.
+    //if (!A) {
+    //    cols[0] = info1.mx;
+    //    row = info1.mx - 1;
+    //    ierr = MatPreallocateLocation(A, row, 1, cols, dnz, onz); CHKERRQ(ierr);
+    //    cols[0] = info1.mx - 1;
+    //    row = info1.mx;
+    //    ierr = MatPreallocateLocation(A, row, 1, cols, dnz, onz); CHKERRQ(ierr);
+    //}
+    //else {
+    //    PetscScalar values[1];
+
+    //    row = info1.mx - 1;
+    //    cols[0] = info1.mx;
+    //    values[0] = 0.0;
+    //    ierr = MatSetValues(A, 1, &row, 1, cols, values, INSERT_VALUES); CHKERRQ(ierr);
+
+    //    row = info1.mx;
+    //    cols[0] = info1.mx - 1;
+    //    values[0] = 0.0;
+    //    ierr = MatSetValues(A, 1, &row, 1, cols, values, INSERT_VALUES); CHKERRQ(ierr);
+    //}
+
     if (!A) {
+        cols[0] = info1.mx - 1;
+        row = size - 1;
+        ierr = MatPreallocateLocation(A, row, 1, cols, dnz, onz); CHKERRQ(ierr);
         cols[0] = info1.mx;
+        row = size - 1;
+        ierr = MatPreallocateLocation(A, row, 1, cols, dnz, onz); CHKERRQ(ierr);
+
+        cols[0] = size - 1;
         row = info1.mx - 1;
         ierr = MatPreallocateLocation(A, row, 1, cols, dnz, onz); CHKERRQ(ierr);
-        cols[0] = info1.mx - 1;
+        cols[0] = size - 1;
         row = info1.mx;
         ierr = MatPreallocateLocation(A, row, 1, cols, dnz, onz); CHKERRQ(ierr);
     }
     else {
         PetscScalar values[1];
 
-        row = info1.mx - 1;
-        cols[0] = info1.mx;
+        cols[0] = info1.mx - 1;
+        row = size - 1;
         values[0] = 0.0;
         ierr = MatSetValues(A, 1, &row, 1, cols, values, INSERT_VALUES); CHKERRQ(ierr);
 
+        cols[0] = info1.mx;
+        row = size - 1;
+        values[0] = 0.0;
+        ierr = MatSetValues(A, 1, &row, 1, cols, values, INSERT_VALUES); CHKERRQ(ierr);
+
+        cols[0] = size - 1;
+        row = info1.mx - 1;
+        values[0] = 0.0;
+        ierr = MatSetValues(A, 1, &row, 1, cols, values, INSERT_VALUES); CHKERRQ(ierr);
+
+        cols[0] = size - 1;
         row = info1.mx;
-        cols[0] = info1.mx - 1;
         values[0] = 0.0;
         ierr = MatSetValues(A, 1, &row, 1, cols, values, INSERT_VALUES); CHKERRQ(ierr);
     }
-    
     PetscFunctionReturn(0);
 }
