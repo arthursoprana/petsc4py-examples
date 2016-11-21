@@ -27,8 +27,8 @@ def transient_heat_transfer_1D(
     da1 = PETSc.DMDA().create([nx],dof=1, stencil_width=1, stencil_type='star')
     da2 = PETSc.DMDA().create([nx],dof=1, stencil_width=1, stencil_type='star')
     
-	# Create a redundant DM, there is no petsc4py interface (yet)
-	# so we created our own wrapper
+    # Create a redundant DM, there is no petsc4py interface (yet)
+    # so we created our own wrapper
     dmredundant = PETSc.DM().create()
     dmredundant.setType(dmredundant.Type.REDUNDANT)
     HeatTransfer1D.redundantSetSize(dmredundant, 0, 1)
@@ -105,11 +105,12 @@ else:
     options.delValue('-dmcomposite_dense_jacobian')
 
 options.setValue('-ts_fd_color', None)
-#options.delValue('-ts_bdf_adapt')
 
+#options.setValue('-mat_view', 'draw')
+#options.setValue('-draw_pause', 1)
 #options.setValue('-is_coloring_view', '')
 
-nx = 50
+nx = 100
 temperature_left  = 0.0    # [degC]
 temperature_right = 50.0   # [degC]
 conductivity = 1.0         # [W/(m.K)]
@@ -133,5 +134,5 @@ for final_time in time_intervals:
     
 x = np.linspace(0, wall_length, 2*nx + 1)
 for sol in sols:
-    plt.plot(x, sol)
+    plt.plot(x, np.concatenate((sol[:nx], [sol[2*nx]], sol[nx:-1])))
 plt.show()

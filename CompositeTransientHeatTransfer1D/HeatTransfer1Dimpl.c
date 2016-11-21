@@ -95,10 +95,9 @@ PetscErrorCode FormInitGuessLocal(DM da, Vec X, Params *p)
 }
 
 
-
 #undef __FUNCT__
-#define __FUNCT__ "FormFunctionLocal1"
-PetscErrorCode FormFunctionLocal1(DMDALocalInfo *info, PetscReal t, Field *x1, Field *x2, Field *x_t, Field *f, Params *p, PetscInt comp_offset, PetscInt total_size)
+#define __FUNCT__ "FormFunctionLocal"
+PetscErrorCode FormFunctionLocal(DMDALocalInfo *info, PetscReal t, Field *x, Field *x_t, Field *f, Params *p, PetscInt comp_offset, PetscInt total_size)
  {
     PetscErrorCode ierr;
     PetscInt       xints,xinte,i;
@@ -119,33 +118,29 @@ PetscErrorCode FormFunctionLocal1(DMDALocalInfo *info, PetscReal t, Field *x1, F
     k = conductivity;
 
     xints = info->xs; xinte = info->xs+info->xm;
-  
-    /* Test whether we are on the left edge of the global array */
-    if (xints + comp_offset == 0) {
-        i = 0;
-        /* left edge */
-        f[i].T  = x1[i].T - T_left;
-    }
-
+         
     // Not sure why we need this :(
     if (xints == 0) {
+        i = 0;
         xints = xints + 1;
-    }
-    if (xinte == info->mx) {
-        xinte = xinte - 1;
-        i = info->mx - 1;
         /* Temperature */
         f[i].T = x_t[i].T * dx
-               - 1.0 * (+k * (x2[0].T - x1[i].T) / dx
-                        -k * (x1[i].T - x1[i - 1].T) / dx + Q * dx);
+               -1.0 * (+ k * (x[i + 1].T - x[i].T) / dx + Q * dx);
+    }
+    if (xinte == info->mx) {
+        i = info->mx - 1;
+        xinte = xinte - 1;  
+        /* Temperature */
+        f[i].T = x_t[i].T * dx
+               -1.0 * (- k * (x[i].T - x[i - 1].T) / dx + Q * dx);      
     }
 
     /* Compute over the interior points */
     for (i=xints; i<xinte; i++) {
         /* Temperature */
         f[i].T = x_t[i].T * dx
-               -1.0 * (+ k * (x1[i + 1].T - x1[i].T) / dx
-                       - k * (x1[i].T - x1[i - 1].T) / dx + Q * dx);
+               -1.0 * (+ k * (x[i + 1].T - x[i].T) / dx
+                       - k * (x[i].T - x[i - 1].T) / dx + Q * dx);
     }
   /*
      Flop count (multiply-adds are counted as 2 operations)
@@ -154,73 +149,12 @@ PetscErrorCode FormFunctionLocal1(DMDALocalInfo *info, PetscReal t, Field *x1, F
   PetscFunctionReturn(0);
 } 
 
-#undef __FUNCT__
-#define __FUNCT__ "FormFunctionLocal2"
-PetscErrorCode FormFunctionLocal2(DMDALocalInfo *info, PetscReal t, Field *x1, Field *x2, Field *x_t, Field *f, Params *p, PetscInt comp_offset, PetscInt total_size)
-{
-    PetscErrorCode ierr;
-    PetscInt       xints, xinte, i;
-    PetscReal      dx;
-    PetscReal      L, k, conductivity, T_left, T_right, Q;
-
-    PetscFunctionBegin;
-    conductivity = p->conductivity_;
-    T_left = p->temperature_left_;
-    T_right = p->temperature_right_;
-    Q = p->source_term_;
-    L = p->wall_length_;
-    /*
-    Define mesh intervals ratios for uniform grid.
-    */
-
-    dx = L / (PetscReal)(total_size - 1);
-    k = conductivity;
-
-    xints = info->xs; xinte = info->xs + info->xm;
-
-    /* Test whether we are on the right edge of the global array */
-    if (xinte + comp_offset == total_size) {
-        i = info->mx - 1;
-        /* right edge */
-        f[i].T = x2[i].T - T_right;
-    }
-
-    // Not sure why we need this :(
-    if (xints == 0) {
-        xints = xints + 1;
-        i = 0;
-        /* Temperature */
-        f[i].T = x_t[i].T * dx
-            - 1.0 * (+k * (x2[i+1].T - x2[i].T) / dx
-                     -k * (x2[i].T - x1[info->mx - 1].T) / dx + Q * dx);
-    }
-    if (xinte == info->mx) {
-        xinte = xinte - 1;
-    }
-
-    /* Compute over the interior points */
-    for (i = xints; i<xinte; i++) {
-        /* Temperature */
-        f[i].T = x_t[i].T * dx
-               - 1.0 * (+k * (x2[i + 1].T - x2[i].T) / dx
-                        -k * (x2[i].T - x2[i - 1].T) / dx + Q * dx);
-    }
-    /*
-    Flop count (multiply-adds are counted as 2 operations)
-    */
-    ierr = PetscLogFlops(84.0*info->xm); CHKERRQ(ierr);
-    PetscFunctionReturn(0);
-}
-
 
 #undef __FUNCT__
 #define __FUNCT__ "FormFunction"
 PetscErrorCode FormFunction(TS ts, PetscReal t, Vec X, Vec X_t, Vec F, Params *p)
 {
     DMDALocalInfo  info;
-    Field          *u1, *u2;
-    Field          *u1_t, *u2_t;
-    Field          *f1, *f2;
     PetscErrorCode ierr;
     DM             dm;
     PetscInt nDM;
@@ -251,31 +185,65 @@ PetscErrorCode FormFunction(TS ts, PetscReal t, Vec X, Vec X_t, Vec F, Params *p
         ierr = DMDAGetLocalInfo(das[i], &info); CHKERRQ(ierr);
         total_size += info.mx;
     }
+	total_size += 1;
 
     /* Access the subvectors in F.
     These are not ghosted so directly access the memory locations in F */
     ierr = DMCompositeGetAccessArray(dm, F, nDM, NULL, Fs); CHKERRQ(ierr);
 
+    PetscInt comp_offset = 0;
     for (int i = 0; i < nDM - 1; ++i) {
         ierr = DMDAVecGetArray(das[i], X_ts[i], &(u_t[i])); CHKERRQ(ierr);
         ierr = DMDAVecGetArray(das[i], Xs[i], &(u[i])); CHKERRQ(ierr);
         ierr = DMDAVecGetArray(das[i], Fs[i], &(f[i])); CHKERRQ(ierr);
+        
+        ierr = DMDAGetLocalInfo(das[i], &info); CHKERRQ(ierr);
+        
+        // Central nodes
+        ierr = FormFunctionLocal(&info, t, u[i], u_t[i], f[i], p, comp_offset, total_size); CHKERRQ(ierr);
+        comp_offset += info.mx;
     }
 
-    PetscInt comp_offset = 0;
+	// Nodal part of residual
+    ierr = VecGetArray(X_ts[NETWORK_SIZE - 1], &(u_t[NETWORK_SIZE-1])); CHKERRQ(ierr);
+    ierr = VecGetArray(Xs[NETWORK_SIZE - 1], &(u[NETWORK_SIZE - 1])); CHKERRQ(ierr);
+    ierr = VecGetArray(Fs[NETWORK_SIZE - 1], &(f[NETWORK_SIZE - 1])); CHKERRQ(ierr);
 
-    // Obs for fluxes we need all u1 and u2 !
-    ///////////////////////////////////////////////////////
-    // da1
-    ierr = DMDAGetLocalInfo(das[0], &info); CHKERRQ(ierr);
-    ierr = FormFunctionLocal1(&info, t, u[0], u[1], u_t[0], f[0], p, comp_offset, total_size); CHKERRQ(ierr);
-    comp_offset += info.mx;
-    ///////////////////////////////////////////////////////
-    // da2
-    ierr = DMDAGetLocalInfo(das[1], &info); CHKERRQ(ierr);
-    ierr = FormFunctionLocal2(&info, t, u[0], u[1], u_t[1], f[1], p, comp_offset, total_size); CHKERRQ(ierr);
-    comp_offset += info.mx;
-    ///////////////////////////////////////////////////////
+    // Code goes here
+	{
+		PetscReal      dx;
+		PetscReal      L, k, conductivity, T_left, T_right, Q;
+
+		conductivity = p->conductivity_;
+		T_left = p->temperature_left_;
+		T_right = p->temperature_right_;
+		Q = p->source_term_;
+		L = p->wall_length_;
+		dx = L / (PetscReal)(total_size - 1);
+		k = conductivity;
+
+		double acc_term = u_t[NETWORK_SIZE - 1][0].T * dx;
+		double source_term = Q * dx;
+		f[NETWORK_SIZE - 1][0].T = acc_term - source_term;
+
+		ierr = DMDAGetLocalInfo(das[0], &info); CHKERRQ(ierr);
+		double flux_term_L = k * (u[NETWORK_SIZE - 1][0].T - u[0][info.mx-1].T) / dx;
+		double flux_term_R = k * (u[1][0].T - u[NETWORK_SIZE - 1][0].T) / dx;
+		f[NETWORK_SIZE - 1][0].T += -(flux_term_R - flux_term_L);
+		f[0][info.mx - 1].T += +(-flux_term_L);
+		f[1][0].T += +(+flux_term_R);
+
+		// bc's
+		// left flux term w/ prescribed pressure
+		f[0][0].T += - 1.0 * (-k * (u[0][0].T - T_left) / (0.5*dx));
+
+		ierr = DMDAGetLocalInfo(das[1], &info); CHKERRQ(ierr);
+		f[1][info.mx - 1].T += -1.0 * (+k * (T_right - u[1][info.mx - 1].T) / (0.5*dx));
+	}
+    // end
+    ierr = VecRestoreArray(X_ts[NETWORK_SIZE - 1], &(u_t[NETWORK_SIZE - 1])); CHKERRQ(ierr);
+    ierr = VecRestoreArray(Xs[NETWORK_SIZE - 1], &(u[NETWORK_SIZE - 1])); CHKERRQ(ierr);
+    ierr = VecRestoreArray(Fs[NETWORK_SIZE - 1], &(f[NETWORK_SIZE - 1])); CHKERRQ(ierr);
 
     for (int i = 0; i < nDM-1; ++i) {
         ierr = DMDAVecRestoreArray(das[i], X_ts[i], &(u_t[i])); CHKERRQ(ierr);
@@ -336,28 +304,6 @@ PetscErrorCode FormCoupleLocations(DM dm, Mat A, PetscInt *dnz, PetscInt *onz, P
     // Hack: Bug in petsc file -> packm.c @ line (173) and line (129)
     // First A is NULL, then later dnz and onz are NULL, that's why
     // we need an IF here.
-    //if (!A) {
-    //    cols[0] = info1.mx;
-    //    row = info1.mx - 1;
-    //    ierr = MatPreallocateLocation(A, row, 1, cols, dnz, onz); CHKERRQ(ierr);
-    //    cols[0] = info1.mx - 1;
-    //    row = info1.mx;
-    //    ierr = MatPreallocateLocation(A, row, 1, cols, dnz, onz); CHKERRQ(ierr);
-    //}
-    //else {
-    //    PetscScalar values[1];
-
-    //    row = info1.mx - 1;
-    //    cols[0] = info1.mx;
-    //    values[0] = 0.0;
-    //    ierr = MatSetValues(A, 1, &row, 1, cols, values, INSERT_VALUES); CHKERRQ(ierr);
-
-    //    row = info1.mx;
-    //    cols[0] = info1.mx - 1;
-    //    values[0] = 0.0;
-    //    ierr = MatSetValues(A, 1, &row, 1, cols, values, INSERT_VALUES); CHKERRQ(ierr);
-    //}
-
     if (!A) {
         cols[0] = info1.mx - 1;
         row = size - 1;
