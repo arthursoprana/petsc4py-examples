@@ -1,7 +1,10 @@
 #include "HeatTransfer1Dimpl.h"
 #include "include_patch_pack.h"
 
-#define NETWORK_SIZE 3
+#define NODES_SIZE 1
+#define PIPES_SIZE 2
+#define DMS_SIZE 3
+
 
 #undef __FUNCT__
 #define __FUNCT__ "RedundantSetSize"
@@ -23,8 +26,8 @@ PetscErrorCode FormInitGuess(DM dm, Vec X, Params *p)
     PetscErrorCode ierr;    
     PetscInt nDM;
     // TODO: Find a way to dynamically allocate these arrays in c
-    DM  das[NETWORK_SIZE];
-    Vec Xs[NETWORK_SIZE];
+    DM  das[DMS_SIZE];
+    Vec Xs[DMS_SIZE];
    
     PetscFunctionBegin;
 
@@ -35,11 +38,11 @@ PetscErrorCode FormInitGuess(DM dm, Vec X, Params *p)
     ierr = DMCompositeGetAccessArray(dm, X, nDM, NULL, Xs); CHKERRQ(ierr);
 
     /* Evaluate local user provided function */
-    for (int i = 0; i < nDM - 1; ++i) {
+    for (int i = 0; i < nDM - NODES_SIZE; ++i) {
         ierr = FormInitGuessLocal(das[i], Xs[i], p); CHKERRQ(ierr);
     }
 
-    ierr = DMCompositeRestoreAccessArray(dm, X, nDM - 1, NULL, Xs); CHKERRQ(ierr);
+    ierr = DMCompositeRestoreAccessArray(dm, X, nDM, NULL, Xs); CHKERRQ(ierr);
 
     PetscFunctionReturn(0);
 }
@@ -160,11 +163,11 @@ PetscErrorCode FormFunction(TS ts, PetscReal t, Vec X, Vec X_t, Vec F, Params *p
     PetscInt nDM;
 
     // TODO: Find a way to dynamically allocate these arrays in c
-    DM  das[NETWORK_SIZE];
-    Vec Xs[NETWORK_SIZE], X_ts[NETWORK_SIZE], Fs[NETWORK_SIZE];
-    Field* u[NETWORK_SIZE];
-    Field* u_t[NETWORK_SIZE];
-    Field* f[NETWORK_SIZE];
+    DM  das[DMS_SIZE];
+    Vec Xs[DMS_SIZE], X_ts[DMS_SIZE], Fs[DMS_SIZE];
+    Field* u_t[DMS_SIZE];
+    Field* u[DMS_SIZE];
+    Field* f[DMS_SIZE];
 
     PetscFunctionBegin;
 
@@ -181,7 +184,7 @@ PetscErrorCode FormFunction(TS ts, PetscReal t, Vec X, Vec X_t, Vec F, Params *p
 
     // Calculate total size
     PetscInt total_size = 0;
-    for (int i = 0; i < nDM-1; ++i) {
+    for (int i = 0; i < nDM - NODES_SIZE; ++i) {
         ierr = DMDAGetLocalInfo(das[i], &info); CHKERRQ(ierr);
         total_size += info.mx;
     }
@@ -192,7 +195,7 @@ PetscErrorCode FormFunction(TS ts, PetscReal t, Vec X, Vec X_t, Vec F, Params *p
     ierr = DMCompositeGetAccessArray(dm, F, nDM, NULL, Fs); CHKERRQ(ierr);
 
     PetscInt comp_offset = 0;
-    for (int i = 0; i < nDM - 1; ++i) {
+    for (int i = 0; i < nDM - NODES_SIZE; ++i) {
         ierr = DMDAVecGetArray(das[i], X_ts[i], &(u_t[i])); CHKERRQ(ierr);
         ierr = DMDAVecGetArray(das[i], Xs[i], &(u[i])); CHKERRQ(ierr);
         ierr = DMDAVecGetArray(das[i], Fs[i], &(f[i])); CHKERRQ(ierr);
@@ -205,9 +208,9 @@ PetscErrorCode FormFunction(TS ts, PetscReal t, Vec X, Vec X_t, Vec F, Params *p
     }
 
 	// Nodal part of residual
-    ierr = VecGetArray(X_ts[NETWORK_SIZE - 1], &(u_t[NETWORK_SIZE-1])); CHKERRQ(ierr);
-    ierr = VecGetArray(Xs[NETWORK_SIZE - 1], &(u[NETWORK_SIZE - 1])); CHKERRQ(ierr);
-    ierr = VecGetArray(Fs[NETWORK_SIZE - 1], &(f[NETWORK_SIZE - 1])); CHKERRQ(ierr);
+    ierr = VecGetArray(X_ts[PIPES_SIZE], &(u_t[PIPES_SIZE])); CHKERRQ(ierr);
+    ierr = VecGetArray(Xs[PIPES_SIZE], &(u[PIPES_SIZE])); CHKERRQ(ierr);
+    ierr = VecGetArray(Fs[PIPES_SIZE], &(f[PIPES_SIZE])); CHKERRQ(ierr);
 
     // Code goes here
 	{
@@ -222,16 +225,18 @@ PetscErrorCode FormFunction(TS ts, PetscReal t, Vec X, Vec X_t, Vec F, Params *p
 		dx = L / (PetscReal)(total_size - 1);
 		k = conductivity;
 
-		double acc_term = u_t[NETWORK_SIZE - 1][0].T * dx;
+		// Internal node
+		double acc_term = u_t[PIPES_SIZE][0].T * dx;
 		double source_term = Q * dx;
-		f[NETWORK_SIZE - 1][0].T = acc_term - source_term;
+		f[PIPES_SIZE][0].T = acc_term - source_term;
 
 		ierr = DMDAGetLocalInfo(das[0], &info); CHKERRQ(ierr);
-		double flux_term_L = k * (u[NETWORK_SIZE - 1][0].T - u[0][info.mx-1].T) / dx;
-		double flux_term_R = k * (u[1][0].T - u[NETWORK_SIZE - 1][0].T) / dx;
-		f[NETWORK_SIZE - 1][0].T += -(flux_term_R - flux_term_L);
+		double flux_term_L = k * (u[PIPES_SIZE][0].T - u[0][info.mx-1].T) / dx;
+		double flux_term_R = k * (u[1][0].T - u[PIPES_SIZE][0].T) / dx;
+		f[PIPES_SIZE][0].T += -(flux_term_R - flux_term_L);
+
 		f[0][info.mx - 1].T += +(-flux_term_L);
-		f[1][0].T += +(+flux_term_R);
+		f[1][0].T           += +(+flux_term_R);
 
 		// bc's
 		// left flux term w/ prescribed pressure
@@ -241,11 +246,11 @@ PetscErrorCode FormFunction(TS ts, PetscReal t, Vec X, Vec X_t, Vec F, Params *p
 		f[1][info.mx - 1].T += -1.0 * (+k * (T_right - u[1][info.mx - 1].T) / (0.5*dx));
 	}
     // end
-    ierr = VecRestoreArray(X_ts[NETWORK_SIZE - 1], &(u_t[NETWORK_SIZE - 1])); CHKERRQ(ierr);
-    ierr = VecRestoreArray(Xs[NETWORK_SIZE - 1], &(u[NETWORK_SIZE - 1])); CHKERRQ(ierr);
-    ierr = VecRestoreArray(Fs[NETWORK_SIZE - 1], &(f[NETWORK_SIZE - 1])); CHKERRQ(ierr);
+    ierr = VecRestoreArray(X_ts[PIPES_SIZE], &(u_t[PIPES_SIZE])); CHKERRQ(ierr);
+    ierr = VecRestoreArray(Xs[PIPES_SIZE], &(u[PIPES_SIZE])); CHKERRQ(ierr);
+    ierr = VecRestoreArray(Fs[PIPES_SIZE], &(f[PIPES_SIZE])); CHKERRQ(ierr);
 
-    for (int i = 0; i < nDM-1; ++i) {
+    for (int i = 0; i < nDM - NODES_SIZE; ++i) {
         ierr = DMDAVecRestoreArray(das[i], X_ts[i], &(u_t[i])); CHKERRQ(ierr);
         ierr = DMDAVecRestoreArray(das[i], Xs[i], &(u[i])); CHKERRQ(ierr);
         ierr = DMDAVecRestoreArray(das[i], Fs[i], &(f[i])); CHKERRQ(ierr);
@@ -279,68 +284,76 @@ PetscErrorCode FormCoupleLocations(DM dm, Mat A, PetscInt *dnz, PetscInt *onz, P
     PetscInt nDM;
     DMDALocalInfo info;
     // TODO: Find a way to dynamically allocate these arrays in c
-    DM  das[NETWORK_SIZE];
+    DM  das[DMS_SIZE];
 
     PetscFunctionBegin;
    
     ierr = DMCompositeGetNumberDM(dm, &nDM); CHKERRQ(ierr);
     ierr = DMCompositeGetEntriesArray(dm, das); CHKERRQ(ierr);
 
-    DMDALocalInfo  info1, info2;
-    ierr = DMDAGetLocalInfo(das[0], &info1); CHKERRQ(ierr);
-    ierr = DMDAGetLocalInfo(das[1], &info2); CHKERRQ(ierr);
-
     // Calculate total size
     int size = 0;
-    for (int i = 0; i < nDM-1; ++i) {
+    for (int i = 0; i < nDM - NODES_SIZE; ++i) {
         ierr = DMDAGetLocalInfo(das[i], &info); CHKERRQ(ierr);
         size += info.mx;
     }
 
-    PetscInt N;
-    ierr = DMRedundantGetSize(das[2], NULL, &N); CHKERRQ(ierr);
-    size += N;
+	for (int i = nDM - NODES_SIZE; i < nDM; ++i) {
+		PetscInt N;
+		ierr = DMRedundantGetSize(das[i], NULL, &N); CHKERRQ(ierr);
+		size += N;
+	}
+
 
     // Hack: Bug in petsc file -> packm.c @ line (173) and line (129)
     // First A is NULL, then later dnz and onz are NULL, that's why
     // we need an IF here.
     if (!A) {
-        cols[0] = info1.mx - 1;
-        row = size - 1;
-        ierr = MatPreallocateLocation(A, row, 1, cols, dnz, onz); CHKERRQ(ierr);
-        cols[0] = info1.mx;
-        row = size - 1;
-        ierr = MatPreallocateLocation(A, row, 1, cols, dnz, onz); CHKERRQ(ierr);
+		int next_pipe_start_idx = 0;
+		for (int i = 0; i < nDM - NODES_SIZE - 1; ++i) {
+			ierr = DMDAGetLocalInfo(das[i], &info); CHKERRQ(ierr);
+			next_pipe_start_idx += info.mx;
 
-        cols[0] = size - 1;
-        row = info1.mx - 1;
-        ierr = MatPreallocateLocation(A, row, 1, cols, dnz, onz); CHKERRQ(ierr);
-        cols[0] = size - 1;
-        row = info1.mx;
-        ierr = MatPreallocateLocation(A, row, 1, cols, dnz, onz); CHKERRQ(ierr);
+			cols[0] = next_pipe_start_idx - 1;
+			row = size - 1;
+			ierr = MatPreallocateLocation(A, row, 1, cols, dnz, onz); CHKERRQ(ierr);
+			cols[0] = next_pipe_start_idx;
+			row = size - 1;
+			ierr = MatPreallocateLocation(A, row, 1, cols, dnz, onz); CHKERRQ(ierr);
+
+			cols[0] = size - 1;
+			row = next_pipe_start_idx - 1;
+			ierr = MatPreallocateLocation(A, row, 1, cols, dnz, onz); CHKERRQ(ierr);
+			cols[0] = size - 1;
+			row = next_pipe_start_idx;
+			ierr = MatPreallocateLocation(A, row, 1, cols, dnz, onz); CHKERRQ(ierr);
+		}
     }
     else {
         PetscScalar values[1];
+		int next_pipe_start_idx = 0;
+		for (int i = 0; i < nDM - NODES_SIZE - 1; ++i) {
+			ierr = DMDAGetLocalInfo(das[i], &info); CHKERRQ(ierr);
+			next_pipe_start_idx += info.mx;
 
-        cols[0] = info1.mx - 1;
-        row = size - 1;
-        values[0] = 0.0;
-        ierr = MatSetValues(A, 1, &row, 1, cols, values, INSERT_VALUES); CHKERRQ(ierr);
+			cols[0] = next_pipe_start_idx - 1;
+			row = size - 1;
+			values[0] = 0.0;
+			ierr = MatSetValues(A, 1, &row, 1, cols, values, INSERT_VALUES); CHKERRQ(ierr);
+			cols[0] = next_pipe_start_idx;
+			row = size - 1;
+			values[0] = 0.0;
+			ierr = MatSetValues(A, 1, &row, 1, cols, values, INSERT_VALUES); CHKERRQ(ierr);
 
-        cols[0] = info1.mx;
-        row = size - 1;
-        values[0] = 0.0;
-        ierr = MatSetValues(A, 1, &row, 1, cols, values, INSERT_VALUES); CHKERRQ(ierr);
-
-        cols[0] = size - 1;
-        row = info1.mx - 1;
-        values[0] = 0.0;
-        ierr = MatSetValues(A, 1, &row, 1, cols, values, INSERT_VALUES); CHKERRQ(ierr);
-
-        cols[0] = size - 1;
-        row = info1.mx;
-        values[0] = 0.0;
-        ierr = MatSetValues(A, 1, &row, 1, cols, values, INSERT_VALUES); CHKERRQ(ierr);
+			cols[0] = size - 1;
+			row = next_pipe_start_idx - 1;
+			values[0] = 0.0;
+			ierr = MatSetValues(A, 1, &row, 1, cols, values, INSERT_VALUES); CHKERRQ(ierr);
+			cols[0] = size - 1;
+			row = next_pipe_start_idx;
+			values[0] = 0.0;
+			ierr = MatSetValues(A, 1, &row, 1, cols, values, INSERT_VALUES); CHKERRQ(ierr);
+		}
     }
     PetscFunctionReturn(0);
 }
