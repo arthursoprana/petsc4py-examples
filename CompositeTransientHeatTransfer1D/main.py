@@ -8,8 +8,9 @@ import HeatTransfer1D
 petsc4py.init(sys.argv)
 
 def transient_heat_transfer_1D(
-    nx, temperature_left, 
-    temperature_right, 
+    npipes, nx, 
+    initial_temperature,
+    temperature_presc, 
     conductivity,
     source_term,
     wall_length,
@@ -24,8 +25,9 @@ def transient_heat_transfer_1D(
 
     # http://www.mcs.anl.gov/petsc/petsc-current/docs/manualpages/DM/index.html
     #
-    da1 = PETSc.DMDA().create([nx],dof=1, stencil_width=1, stencil_type='star')
-    da2 = PETSc.DMDA().create([nx],dof=1, stencil_width=1, stencil_type='star')
+    pipes = []
+    for i in range(npipes):
+        pipes.append(PETSc.DMDA().create([nx],dof=1, stencil_width=1, stencil_type='star'))
     
     # Create a redundant DM, there is no petsc4py interface (yet)
     # so we created our own wrapper
@@ -36,8 +38,10 @@ def transient_heat_transfer_1D(
     dmredundant.setUp()
 
     dm = PETSc.DMComposite().create()
-    dm.addDM(da1)
-    dm.addDM(da2)
+    
+    for pipe in pipes:        
+        dm.addDM(pipe)
+
     dm.addDM(dmredundant)
     HeatTransfer1D.compositeSetCoupling(dm)
     
@@ -47,11 +51,13 @@ def transient_heat_transfer_1D(
 
     # http://www.mcs.anl.gov/petsc/petsc-current/docs/manualpages/TS/TSSetIFunction.html
     ts.setIFunction(HeatTransfer1D.formFunction, F,
-                     args=(temperature_left, temperature_right, conductivity, source_term, wall_length))
+                     args=(conductivity, source_term, wall_length, temperature_presc))
 
     x = dm.createGlobalVec()
     
-    HeatTransfer1D.formInitGuess(x, dm, temperature_left, temperature_right, conductivity, source_term, wall_length)
+    x[...] = initial_temperature
+    
+    #HeatTransfer1D.formInitGuess(x, dm, initial_temperature)
 
     # http://www.mcs.anl.gov/petsc/petsc-current/docs/manualpages/TS/TSSetDuration.html
     ts.setDuration(max_time=final_time, max_steps=None)
@@ -107,14 +113,15 @@ else:
 options.setValue('-ts_fd_color', None)
 
 #options.setValue('-mat_view', 'draw')
-#options.setValue('-draw_pause', 1)
+#options.setValue('-draw_pause', 100)
 #options.setValue('-is_coloring_view', '')
 
+npipes = 4
 nx = 100
-temperature_left  = 0.0    # [degC]
-temperature_right = 50.0   # [degC]
+temperature_presc = np.array([2.0, 50.0, 50.0, 50.0]) # [degC]
+initial_temperature = 10.0 # [degC]
 conductivity = 1.0         # [W/(m.K)]
-source_term = 100.0          # [W/m3]
+source_term = 00.0          # [W/m3]
 wall_length = 1.0          # [m]
 
 time_intervals = [0.001, 0.01, 0.05, 0.1, 1.0]
@@ -122,8 +129,9 @@ time_intervals = [0.001, 0.01, 0.05, 0.1, 1.0]
 sols = []
 for final_time in time_intervals:
     sol = transient_heat_transfer_1D(
-        nx, temperature_left, 
-        temperature_right, 
+        npipes, nx, 
+        initial_temperature,
+        temperature_presc, 
         conductivity,
         source_term,
         wall_length,
@@ -132,7 +140,7 @@ for final_time in time_intervals:
         )
     sols.append(sol[...])
     
-x = np.linspace(0, wall_length, 2*nx + 1)
+x = np.linspace(0, npipes*wall_length, npipes*nx + 1)
 for sol in sols:
-    plt.plot(x, np.concatenate((sol[:nx], [sol[2*nx]], sol[nx:-1])))
+    plt.plot(x, sol)
 plt.show()

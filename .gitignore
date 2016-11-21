@@ -4,7 +4,6 @@
 *.obj
 *.exp
 CompositeTransientHeatTransfer1D/HeatTransfer1D.c
-CompositeTransientHeatTransfer1D/HeatTransfer1D.pyx
 HeatTransfer1D/HeatTransfer1D.c
 HeatTransfer1D/HeatTransfer1D.pyx
 MultiField1D/MultiField1D.c
