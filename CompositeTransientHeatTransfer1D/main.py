@@ -31,12 +31,14 @@ def transient_heat_transfer_1D(
     
     # Create a redundant DM, there is no petsc4py interface (yet)
     # so we created our own wrapper
+    # http://www.mcs.anl.gov/petsc/petsc-current/docs/manualpages/DM/DMREDUNDANT.html
     dmredundant = PETSc.DM().create()
     dmredundant.setType(dmredundant.Type.REDUNDANT)
     HeatTransfer1D.redundantSetSize(dmredundant, 0, 1)
     dmredundant.setDimension(1)
     dmredundant.setUp()
 
+    # http://www.mcs.anl.gov/petsc/petsc-current/docs/manualpages/DM/DMCOMPOSITE.html
     dm = PETSc.DMComposite().create()
     
     for pipe in pipes:        
@@ -119,7 +121,7 @@ options.setValue('-ts_fd_color', None)
 npipes = 4
 nx = 100
 temperature_presc = np.array([2.0, 50.0, 50.0, 50.0]) # [degC]
-initial_temperature = 10.0 # [degC]
+initial_temperature = 0.0 # [degC]
 conductivity = 1.0         # [W/(m.K)]
 source_term = 00.0          # [W/m3]
 wall_length = 1.0          # [m]
