@@ -3,7 +3,7 @@ import numpy as np
 import petsc4py
 from petsc4py import PETSc
 from matplotlib import pyplot as plt
-import HeatTransfer1D
+import CompositeSimple1D
 
 
 
@@ -77,18 +77,20 @@ def transient_heat_transfer_1D(
     # https://www.mcs.anl.gov/petsc/petsc-current/docs/manualpages/TS/
     ts = PETSc.TS().create()
 
+    dof = 1
     # http://www.mcs.anl.gov/petsc/petsc-current/docs/manualpages/DM/index.html
-    #
     pipes = []
     for i in range(npipes):
-        pipes.append(PETSc.DMDA().create([nx],dof=1, stencil_width=1, stencil_type='star'))
+        boundary_type = PETSc.DMDA.BoundaryType.GHOSTED
+        da = PETSc.DMDA().create([nx], dof=dof, stencil_width=1, stencil_type='star', boundary_type=boundary_type)
+        pipes.append(da)
     
     # Create a redundant DM, there is no petsc4py interface (yet)
     # so we created our own wrapper
     # http://www.mcs.anl.gov/petsc/petsc-current/docs/manualpages/DM/DMREDUNDANT.html
     dmredundant = PETSc.DM().create()
     dmredundant.setType(dmredundant.Type.REDUNDANT)
-    HeatTransfer1D.redundantSetSize(dmredundant, 0, 1)
+    CompositeSimple1D.redundantSetSize(dmredundant, 0, dof)
     dmredundant.setDimension(1)
     dmredundant.setUp()
 
@@ -99,7 +101,7 @@ def transient_heat_transfer_1D(
         dm.addDM(pipe)
 
     dm.addDM(dmredundant)
-    HeatTransfer1D.compositeSetCoupling(dm)
+    CompositeSimple1D.compositeSetCoupling(dm)
     
     ts.setDM(dm)
 
@@ -110,14 +112,12 @@ def transient_heat_transfer_1D(
         ts.setIFunction(ode.evalFunction, F)
     else:
         # http://www.mcs.anl.gov/petsc/petsc-current/docs/manualpages/TS/TSSetIFunction.html
-        ts.setIFunction(HeatTransfer1D.formFunction, F,
+        ts.setIFunction(CompositeSimple1D.formFunction, F,
                          args=(conductivity, source_term, wall_length, temperature_presc))    
     
     x = dm.createGlobalVec()
     
     x[...] = initial_temperature
-    
-    #HeatTransfer1D.formInitGuess(x, dm, initial_temperature)
 
     # http://www.mcs.anl.gov/petsc/petsc-current/docs/manualpages/TS/TSSetDuration.html
     ts.setDuration(max_time=final_time, max_steps=None)
@@ -130,13 +130,6 @@ def transient_heat_transfer_1D(
     
     # http://www.mcs.anl.gov/petsc/petsc-current/docs/manualpages/TS/TSSetProblemType.html
     ts.setProblemType(ts.ProblemType.NONLINEAR)
-    
-    # Another way to set the solve type is through PETSc.Options()
-    #ts.setType(ts.Type.CRANK_NICOLSON)
-    #ts.setType(ts.Type.THETA)
-    #ts.setTheta(theta=0.9999)
-    #ts.setType(ts.Type.EIMEX) # http://www.mcs.anl.gov/petsc/petsc-current/docs/manualpages/TS/TSEIMEX.html
-    #ts.setType(ts.Type.BDF      )
 
     ts.setFromOptions()
 
@@ -172,21 +165,21 @@ else:
 
 options.setValue('-ts_fd_color', None)
 
-#options.setValue('-mat_view', 'draw')
-#options.setValue('-draw_pause', 100)
+# options.setValue('-mat_view', 'draw')
+# options.setValue('-draw_pause', 300)
 #options.setValue('-is_coloring_view', '')
-#options.setValue('-help', None)
+# options.setValue('-help', None)
 
-npipes = 4
-nx = 50
-temperature_presc = np.array([2.0, 50.0, 55.0, 60.0]) # [degC]
+npipes = 2
+nx = 5
+temperature_presc = np.array([2.0, 50.0]) # [degC]
 initial_temperature = 10.0 # [degC]
 conductivity = 1.0         # [W/(m.K)]
-source_term = 00.0          # [W/m3]
+source_term = -10.0          # [W/m3]
 wall_length = 1.0          # [m]
 
-time_intervals = [0.001, 0.01, 0.05, 0.1, 1.0]
-#time_intervals = [0.5]
+#time_intervals = [0.001, 0.01, 0.05, 0.1, 1.0]
+time_intervals = [1.0]
 sols = []
 for final_time in time_intervals:
     sol = transient_heat_transfer_1D(
@@ -204,5 +197,6 @@ for final_time in time_intervals:
     
 x = np.linspace(0, npipes*wall_length, npipes*nx + 1)
 for sol in sols:
-    plt.plot(x, sol)
+#     plt.plot(x, sol)
+    plt.plot(x, np.concatenate((sol[0:nx], [sol[npipes*nx]], sol[nx:-1][::-1])))
 plt.show()
