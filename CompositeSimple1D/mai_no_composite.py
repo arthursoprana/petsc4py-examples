@@ -48,19 +48,76 @@ def ideal_gas_density_model(P, deriv=False):
     R = 8.315
     T = 300.0
     M = 16.0e-3
-      
+        
     if deriv:
         return 0 * P + 1 / (Z * (R/M) * T) # 1/a**2
     else:
         return P * M / (Z * R * T)
-    
+     
 # def ideal_gas_density_model(P, deriv=False):
-#      
+#        
 #     if deriv:
 #         return 0 * P
 #     else:
 #         return 1000 + 0*P
 
+def calculate_residual(U, dtU, P, dtP, dx, nx, dof):
+    f = np.zeros((nx, dof))    
+    
+    D = 0.1 # [m]                        
+    ρ = ideal_gas_density_model(P*1e5)
+    c = ideal_gas_density_model(P, deriv=True)
+
+    Ppresc = 1.0 # [bar]
+    Upresc = 2.0 # [m/s]
+    
+    A = 0.25 * np.pi * D ** 2 # [m]
+    
+    ΔV = A * dx
+    
+    ρf = 0.5 * (ρ[:-1] + ρ[1:])
+    cf = 0.5 * (c[:-1] + c[1:])
+    ρf = np.concatenate(([ρf[0]], ρf))
+    cf = np.concatenate(([cf[0]], cf))
+    
+    Re = ρ * np.abs(U) * D / 1e-3
+    
+    fw = colebrook_white_explicit_friction_factor(Re, None, D, absolute_rugosity=1e-5)
+    τw = 0.5 * fw * ρf * np.abs(U) * U  
+    Sw = np.pi * D    
+    
+    ρρ = np.concatenate(([ρ[0]], ρ))
+    # center mass 
+    β = np.where(U > 0.0, 0.5, -0.5) 
+    f[:-1, 1] +=  c[:-1] * dtP[:-1] * 1e5 * ΔV \
+        + ((β[1:  ] - 0.5) * ρ[1:  ] + (β[1:  ] + 0.5) * ρ[ :-1]) * U[1:  ] * A \
+        - ((β[ :-1] - 0.5) * ρ[ :-1] + (β[ :-1] + 0.5) * ρρ[ :-2]) * U[ :-1] * A
+    
+    # Staggered
+    Uc = 0.5 * (U[1:] + U[:-1])
+    dtPc = 0.5 * (dtP[:-2] + dtP[1:-1])
+    
+    β = np.where(Uc > 0.0, 0.5, -0.5)                     
+
+    # center momentum
+    f[1:-1, 0] += U[1:-1] * c[1:-1] * dtPc * 1e5 * ΔV + ρf[1:-1] * dtU[1:-1] * ΔV \
+                 + ρ[ :-2] * Uc[1:  ] * A * ((β[1:  ] - 0.5) * U[2:  ] + (β[1:  ] + 0.5) * U[1:-1]) \
+                 - ρ[1:-1] * Uc[ :-1] * A * ((β[ :-1] - 0.5) * U[1:-1] + (β[ :-1] + 0.5) * U[ :-2]) \
+                 + (P[1:-1] - P[:-2]) * 1e5 * A + τw[1:-1] * (Sw / A) * ΔV
+    
+    # Momentum balance for half control volume
+    f[-1, 0] += c[-1] * dtP[-1] * 1e5  * ΔV + ρf[-1] * dtU[-1] * ΔV * 0.5 \
+               + ρ[-1] * U[-1] * A * U[-1] \
+               - ρ[-1] * Uc[-1] * A * ((β[-1] - 0.5) * U[-1] + (β[-1] + 0.5) * U[-2]) \
+               + (Ppresc - P[-2]) * 1e5 * A + τw[-1] * (Sw / A) * ΔV * 0.5
+   
+    # boundaries                        
+    f[-1,1] = Ppresc - 0.5 * (P[-1] + P[-2])
+    f[0,0] = Upresc - U[0] 
+    
+    return f
+    
+    
 class Heat(object):
     def __init__(self, dm, nx, dof, pipe_length):
 
@@ -80,7 +137,6 @@ class Heat(object):
                 with dm.getAccess(f, locs=None) as Fs:
                     
                     for X, X_t, F in zip(Xs[:], X_ts[:], Fs[:]):   
-
                         udot = X_t.getArray(readonly=True)
                         u    = X.getArray(readonly=True)
                         
@@ -90,60 +146,11 @@ class Heat(object):
                         u = u.reshape(nx, dof)
                         P, U = u[:, 1], u[:, 0] 
                         
-                        D = 0.1 # [m]                        
-                        ρ = ideal_gas_density_model(P*1e5)
-                        c = ideal_gas_density_model(P, deriv=True)
-
-                        Ppresc = 1.0 # [bar]
-                        Upresc = 20.0 # [m/s]
+                        dx = L / (nx - 1)
                         
-                        A = 0.25 * np.pi * D ** 2 # [m]
-                        dx = L / F.size
-                        ΔV = A * dx
-                        
-                        ρf = 0.5 * (ρ[:-1] + ρ[1:])
-                        cf = 0.5 * (c[:-1] + c[1:])
-                        ρf = np.concatenate(([ρf[0]], ρf))
-                        cf = np.concatenate(([cf[0]], cf))
-                        
-                        Re = ρ * np.abs(U) * D / 1e-3
-                        
-                        fw = colebrook_white_explicit_friction_factor(Re, None, D, absolute_rugosity=1e-5)
-                        τw = 0.5 * fw * ρf * np.abs(U) * U  
-                        Sw = np.pi * D
-                        
-                        ff = np.zeros_like(u)
-                        
-                        ρρ = np.concatenate(([ρ[0]], ρ))
-                        # center mass 
-                        β = np.where(U > 0.0, 0.5, -0.5) 
-                        ff[:-1, 1] +=  c[:-1] * dtP[:-1] * 1e5 * ΔV \
-                            + ((β[1:  ] - 0.5) * ρ[1:  ] + (β[1:  ] + 0.5) * ρ[ :-1]) * U[1:  ] * A \
-                            - ((β[ :-1] - 0.5) * ρ[ :-1] + (β[ :-1] + 0.5) * ρρ[ :-2]) * U[ :-1] * A
-                        
-                        # Staggered
-                        Uc = 0.5 * (U[1:] + U[:-1])
-                        dtPc = 0.5 * (dtP[:-2] + dtP[1:-1])
-                        
-                        β = np.where(Uc > 0.0, 0.5, -0.5)                     
-
-                        # center momentum
-                        ff[1:-1, 0] += U[1:-1] * c[1:-1] * dtPc * 1e5 * ΔV + ρf[1:-1] * dtU[1:-1] * ΔV \
-                                     + ρ[ :-2] * Uc[1:  ] * A * ((β[1:  ] - 0.5) * U[2:  ] + (β[1:  ] + 0.5) * U[1:-1]) \
-                                     - ρ[1:-1] * Uc[ :-1] * A * ((β[ :-1] - 0.5) * U[1:-1] + (β[ :-1] + 0.5) * U[ :-2]) \
-                                     + (P[1:-1] - P[:-2]) * 1e5 * A + τw[1:-1] * (Sw / A) * ΔV
-                        
-                        # Momentum balance for half control volume
-                        ff[-1, 0] += c[-1] * dtP[-1] * 1e5  * ΔV + ρf[-1] * dtU[-1] * ΔV * 0.5 \
-                                   + ρ[-1] * U[-1] * A * U[-1] \
-                                   - ρ[-1] * Uc[-1] * A * ((β[-1] - 0.5) * U[-1] + (β[-1] + 0.5) * U[-2]) \
-                                   + (Ppresc - P[-2]) * 1e5 * A + τw[-1] * (Sw / A) * ΔV * 0.5
-                       
-                        # boundaries                        
-                        ff[-1,1] = Ppresc - 0.5 * (P[-1] + P[-2])
-                        ff[0,0] = Upresc - U[0] 
-
-                        F.setArray(ff.flatten())                       
+                        residual = calculate_residual(U, dtU, P, dtP, dx, nx, dof)
+                        F.setArray(residual.flatten())  
+                    
    
 
 
@@ -260,18 +267,40 @@ options.setValue('-mat_fd_type', 'ds')
 # options.setValue('-mat_view', 'draw')
 # options.setValue('-draw_pause', 500)
 #options.setValue('-is_coloring_view', '')
-options.setValue('-help', None)
+# options.setValue('-help', None)
 
 options.setValue('-snes_monitor_short', None)
 options.setValue('-snes_converged_reason', None)
 
-options.setValue('-snes_type', 'newtonls')
+# options.setValue('-sub_0_snes_monitor_short', None)
+# options.setValue('-sub_0_snes_converged_reason', None)
+# options.setValue('-sub_1_snes_monitor_short', None)
+# options.setValue('-sub_1_snes_converged_reason', None)
+
+# options.setValue('-sub_0_fieldsplit_0_ksp_monitor_short', None)
+# options.setValue('-sub_0_fieldsplit_1_ksp_monitor_short', None)
+# options.setValue('-sub_1_fieldsplit_0_ksp_monitor_short', None)
+# options.setValue('-sub_1_fieldsplit_1_ksp_monitor_short', None)
+# options.setValue('-sub_0_fieldsplit_0_ksp_monitor_short', None)
+# options.setValue('-sub_0_fieldsplit_1_ksp_monitor_short', None)
+# options.setValue('-sub_1_fieldsplit_0_ksp_monitor_short', None)
+# options.setValue('-sub_1_fieldsplit_1_ksp_monitor_short', None)
+# 
+# options.setValue('-sub_0_fieldsplit_0_ksp_converged_reason', None)
+# options.setValue('-sub_0_fieldsplit_1_ksp_converged_reason', None)
+# options.setValue('-sub_1_fieldsplit_0_ksp_converged_reason', None)
+# options.setValue('-sub_1_fieldsplit_1_ksp_converged_reason', None)
+# options.setValue('-sub_0_fieldsplit_0_ksp_converged_reason', None)
+# options.setValue('-sub_0_fieldsplit_1_ksp_converged_reason', None)
+# options.setValue('-sub_1_fieldsplit_0_ksp_converged_reason', None)
+# options.setValue('-sub_1_fieldsplit_1_ksp_converged_reason', None)
+
+# options.setValue('-snes_type', 'newtonls')
 # options.setValue('-npc_snes_type', 'ksponly')
 
-
-# options.setValue('-snes_type', 'composite')
-# options.setValue('-snes_composite_type', 'additiveoptimal')
-# options.setValue('-snes_composite_sneses', 'nrichardson,newtonls')
+options.setValue('-snes_type', 'composite')
+options.setValue('-snes_composite_type', 'additiveoptimal')
+options.setValue('-snes_composite_sneses', 'nrichardson,newtonls')
 
 # options.setValue('-snes_composite_sneses', 'fas,newtonls')
 # options.setValue('-snes_composite_sneses', 'ngmres,newtonls')
@@ -286,53 +315,54 @@ options.setValue('-snes_type', 'newtonls')
 # options.setValue('sub_1_snes_linesearch_type', 'basic')
 # options.setValue('sub_1_pc_type', 'mg')
 
-# # for field split solver
-# # for snes in ['sub_0_', 'sub_1_']: # for snes == composite 
+# for field split solver
+for snes in ['sub_0_', 'sub_1_']: # for snes == composite 
 # for snes in ['sub_0_']: # for snes == composite 
-# # for snes in ['', 'npc_']:
-# # for snes in ['npc_']:
-#     # ksp config
-#     options.setValue(snes + 'ksp_type', 'fgmres')  
-#      
-#     # pc config
-#     # For direct solver
-#     # options.setValue(snes + 'pc_type', 'lu')
-#     # options.setValue(snes + 'ksp_type', 'preonly')
-#     # options.setValue(snes + 'pc_factor_shift_type', 'NONZERO')
-#     # options.setValue(snes + 'pc_factor_shift_amount', 1e-12)
-#          
-#     options.setValue(snes + 'pc_type', 'fieldsplit')  
-#     options.setValue(snes + 'pc_fieldsplit_type', 'schur')  
-#     options.setValue(snes + 'pc_fieldsplit_schur_fact_type', 'lower')   
-#     options.setValue(snes + 'pc_fieldsplit_block_size', 2)   
-#     options.setValue(snes + 'pc_fieldsplit_0_fields', 0)   
-#     options.setValue(snes + 'pc_fieldsplit_1_fields', 1)   
-#          
-#     options.setValue(snes + 'fieldsplit_0_ksp_type', 'gmres')
-#     options.setValue(snes + 'fieldsplit_0_pc_type', 'bjacobi')
-# #     options.setValue(snes + 'fieldsplit_0_sub_pc_type', 'bjacobi')
-#          
-#          
+# for snes in ['']:
+# for snes in ['', 'npc_']:
+# for snes in ['npc_']:
+    # ksp config
+    options.setValue(snes + 'ksp_type', 'fgmres')  
+        
+    # pc config
+    # For direct solver
+    # options.setValue(snes + 'pc_type', 'lu')
+    # options.setValue(snes + 'ksp_type', 'preonly')
+    # options.setValue(snes + 'pc_factor_shift_type', 'NONZERO')
+    # options.setValue(snes + 'pc_factor_shift_amount', 1e-12)
+            
+    options.setValue(snes + 'pc_type', 'fieldsplit')  
+    options.setValue(snes + 'pc_fieldsplit_type', 'schur')  
+    options.setValue(snes + 'pc_fieldsplit_schur_fact_type', 'lower')   
+    options.setValue(snes + 'pc_fieldsplit_block_size', 2)   
+    options.setValue(snes + 'pc_fieldsplit_0_fields', 0)   
+    options.setValue(snes + 'pc_fieldsplit_1_fields', 1)   
+            
+    options.setValue(snes + 'fieldsplit_0_ksp_type', 'gmres')
+    options.setValue(snes + 'fieldsplit_0_pc_type', 'bjacobi')
+#     options.setValue(snes + 'fieldsplit_0_sub_pc_type', 'bjacobi')
+            
+            
 #     options.setValue(snes + 'fieldsplit_1_pc_type', 'jacobi') 
 #     options.setValue(snes + 'fieldsplit_1_pc_jacobi_type', 'diagonal') # (choose one of) DIAGONAL ROWMAX ROWSUM (PCJacobiSetType)
 #     options.setValue(snes + 'fieldsplit_1_ksp_type', 'preonly') 
-#          
-#     # options.setValue(snes + 'fieldsplit_1_inner_pc_type', 'jacobi')
-#     # options.setValue(snes + 'fieldsplit_1_inner_ksp_type', 'preonly')
-#          
-#     options.setValue(snes + 'fieldsplit_1_upper_ksp_type', 'preonly')
-#     options.setValue(snes + 'fieldsplit_1_upper_pc_type', 'jacobi')
-#     options.setValue(snes + 'fieldsplit_1_upper_pc_jacobi_type', 'diagonal') # (choose one of) DIAGONAL ROWMAX ROWSUM (PCJacobiSetType)
-#          
-#     options.setValue(snes + 'fieldsplit_1_mat_schur_complement_ainv_type', 'lump')   
-#     # options.setValue(snes + 'pc_fieldsplit_schur_precondition', 'a11')   
-#     options.setValue(snes + 'pc_fieldsplit_schur_precondition', 'selfp')   
-#     # options.setValue(snes + 'pc_fieldsplit_detect_saddle_point', None)
-#     # options.setValue(snes + 'pc_fieldsplit_default', None)
+            
+#     options.setValue(snes + 'fieldsplit_1_inner_pc_type', 'jacobi')
+    options.setValue(snes + 'fieldsplit_1_inner_ksp_type', 'preonly')
+            
+    options.setValue(snes + 'fieldsplit_1_upper_ksp_type', 'preonly')
+    options.setValue(snes + 'fieldsplit_1_upper_pc_type', 'jacobi')
+    options.setValue(snes + 'fieldsplit_1_upper_pc_jacobi_type', 'diagonal') # (choose one of) DIAGONAL ROWMAX ROWSUM (PCJacobiSetType)
+            
+    options.setValue(snes + 'fieldsplit_1_mat_schur_complement_ainv_type', 'lump')   
+    options.setValue(snes + 'pc_fieldsplit_schur_precondition', 'selfp')   
+    # options.setValue(snes + 'pc_fieldsplit_schur_precondition', 'a11')   
+#     options.setValue(snes + 'pc_fieldsplit_detect_saddle_point', None)
+    # options.setValue(snes + 'pc_fieldsplit_default', None)
      
 
 npipes = 1
-nx = 1000
+nx = 10
 dof = 2
 pipe_length = 100.0 # [m]
 
@@ -341,7 +371,7 @@ axarr[0].set_title('Velocity and Pressure')
 
 initial_solution = np.zeros((nx,dof))
 initial_solution[:,0] = 0.0001 # Velocity
-initial_solution[:,1] = 1.0  # Pressure
+initial_solution[:,1] = 1.01  # Pressure
 initial_time = 0.0
 
 sols = []
@@ -379,8 +409,8 @@ for final_time in time_intervals:
     axarr[0].plot(xx, UU, 'k.-')
     axarr[1].plot(xx, PP, 'r.-')
     plt.xlim(0, pipe_length)
-    axarr[0].set_ylim(0, 40)
-    axarr[1].set_ylim(0.9, 2)
+    axarr[0].set_ylim(0, 4)
+    axarr[1].set_ylim(0.99, 1.01)
     plt.show()
 #     plt.draw()
 #     plt.pause(0.0001)
