@@ -11,21 +11,20 @@ petsc4py.init(sys.argv)
 
 
 class Heat(object):
-    def __init__(self, dm, temperature_presc, conductivity, source_term, wall_length):
+    def __init__(self, dm, nx, dof, pipe_length):
 
-        self.dm = dm 
-        self.k  = conductivity
-        self.Q  = source_term
-        self.L  = wall_length
-        self.Tpresc = temperature_presc
-
+        self.dm  = dm        
+        self.L   = pipe_length
+        self.nx  = nx
+        self.dof = dof
+        
     def evalFunction(self, ts, t, x, xdot, f):
-        dm = self.dm
-        Tpresc = self.Tpresc
-        k  = self.k
-        Q  = self.Q 
-        L  = self.L
+        dm  = self.dm
+        L   = self.L
+        dof = self.dof
+        nx  = self.nx
 
+        
         with dm.getAccess(x, locs=None) as Xs:
             with dm.getAccess(xdot, locs=None) as X_ts:
                 with dm.getAccess(f, locs=None) as Fs:
@@ -33,13 +32,49 @@ class Heat(object):
                     size = len(Fs)
                     Fs[size-1][0] = 0.0
                     
-                    for X, X_t, F, T in zip(Xs[:-1], X_ts[:-1], Fs[:-1], Tpresc):   
-                        udot = X_t
-                        u = X            
+                    for X, X_t, F in zip(Xs[:-1], X_ts[:-1], Fs[:-1]):   
+
+                        udot = X_t.getArray(readonly=True)
+                        u    = X.getArray(readonly=True)
                         
+                        udot = udot.reshape(dof, nx)
+                        ∂tP, ∂tU = udot[0], udot[1]
+                        
+                        u = u.reshape(dof, nx)
+                        P, U = u[0], u[1]
+                        
+                        D = 0.1 # [m]                        
+                        ρ = 1.0
+                        c = 0.0
+                        Ppresc = 1.0e5 # [Pa]
+                        Upresc = 0.1 # [m/s]
+                        
+                        A = 0.25 * np.pi * D ** 2 # [m]
                         dx = L / F.size
-                        ff = np.zeros(F.size)
-                        ff[1:-1] = udot[1:-1]*dx - Q*dx + k * (u[1:-1] -  u[:-2])/dx - k * (u[2:] - u[1:-1])/dx
+                        ΔV = A * dx
+                        fw = 0.001
+                        τw = 0.5 * fw * ρ * np.abs(U) * U  
+                        Sw = np.pi * D
+                        ff = np.zeros_like(u)
+                        
+                        # center mass
+                        ff[0][:-1] += c * ∂tP * ΔV + ρ * U[1:] * A - ρ * U[:-1] * A
+                        
+                        # Staggered
+                        Uc = 0.5 * (U[1:] + U[:-1])
+                        
+                        β = np.where(Uc > 0.0, 0.5, -0.5)                     
+                        
+                        # center momentum
+                        ff[1][1:-1] += c * ∂tP * ΔV + ρ * ∂tU * ΔV \
+                                     + ρ * Uc[1:  ] * A * ((β - 0.5) * U[2:-1] + (β + 0.5) * U[1:-2]) \
+                                     - ρ * Uc[ :-1] * A * ((β - 0.5) * U[1:-2] + (β + 0.5) * U[ :-3]) \
+                                     + (P[1:] - P[:-1]) * A + τw * Sw / A
+                       
+                        # boundaries                        
+                        ff[0][-1] = Ppresc - 0.5 * (P[-1] + P[-2])
+                        ff[1][0] = Upresc - U[0] 
+                        ff[1][-1] = U[-2] - U[-1] 
                         
                         ff[ 0] = udot[       0]*dx - Q*dx - k * (u[       1] - u[       0])/dx
                         ff[-1] = udot[u.size-1]*dx - Q*dx + k * (u[u.size-1] - u[u.size-2])/dx
@@ -52,7 +87,7 @@ class Heat(object):
                         # BC's
                         ff[0] += +k * (u[0] - T) / (0.5*dx)
                         
-                        F.setArray(ff)
+                        F.setArray(ff.flatten())
                         dx_avg += dx
                     dx_avg /= len(Xs[:-1])
                     
@@ -62,11 +97,7 @@ class Heat(object):
 
 def transient_heat_transfer_1D(
     npipes, nx, 
-    initial_temperature,
-    temperature_presc, 
-    conductivity,
-    source_term,
-    wall_length,
+    pipe_length,
     final_time,
     initial_time_step,
     impl_python=False
@@ -77,7 +108,7 @@ def transient_heat_transfer_1D(
     # https://www.mcs.anl.gov/petsc/petsc-current/docs/manualpages/TS/
     ts = PETSc.TS().create()
 
-    dof = 1
+    dof = 2
     # http://www.mcs.anl.gov/petsc/petsc-current/docs/manualpages/DM/index.html
     pipes = []
     for i in range(npipes):
@@ -108,16 +139,17 @@ def transient_heat_transfer_1D(
     F = dm.createGlobalVec()
 
     if impl_python:        
-        ode = Heat(dm, temperature_presc, conductivity, source_term, wall_length)
+        ode = Heat(dm, pipe_length)
         ts.setIFunction(ode.evalFunction, F)
     else:
         # http://www.mcs.anl.gov/petsc/petsc-current/docs/manualpages/TS/TSSetIFunction.html
-        ts.setIFunction(CompositeSimple1D.formFunction, F,
-                         args=(conductivity, source_term, wall_length, temperature_presc))    
+        assert False, 'C function not implemented yet!'
+#         ts.setIFunction(CompositeSimple1D.formFunction, F,
+#                          args=(conductivity, source_term, wall_length, temperature_presc))    
     
     x = dm.createGlobalVec()
     
-    x[...] = initial_temperature
+#     x[...] = initial_temperature
 
     # http://www.mcs.anl.gov/petsc/petsc-current/docs/manualpages/TS/TSSetDuration.html
     ts.setDuration(max_time=final_time, max_steps=None)
@@ -172,11 +204,7 @@ options.setValue('-ts_fd_color', None)
 
 npipes = 2
 nx = 5
-temperature_presc = np.array([2.0, 50.0]) # [degC]
-initial_temperature = 10.0 # [degC]
-conductivity = 1.0         # [W/(m.K)]
-source_term = -10.0          # [W/m3]
-wall_length = 1.0          # [m]
+pipe_length = 1.0          # [m]
 
 #time_intervals = [0.001, 0.01, 0.05, 0.1, 1.0]
 time_intervals = [1.0]
@@ -184,18 +212,14 @@ sols = []
 for final_time in time_intervals:
     sol = transient_heat_transfer_1D(
         npipes, nx, 
-        initial_temperature,
-        temperature_presc, 
-        conductivity,
-        source_term,
-        wall_length,
+        pipe_length,
         final_time,
         dt,
         impl_python=True
         )
     sols.append(sol[...])
     
-x = np.linspace(0, npipes*wall_length, npipes*nx + 1)
+x = np.linspace(0, npipes*pipe_length, npipes*nx + 1)
 for sol in sols:
 #     plt.plot(x, sol)
     plt.plot(x, np.concatenate((sol[0:nx], [sol[npipes*nx]], sol[nx:-1][::-1])))
