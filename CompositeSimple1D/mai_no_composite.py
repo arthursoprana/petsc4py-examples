@@ -526,8 +526,8 @@ def transient_heat_transfer_1D(
 options = PETSc.Options()
 options.clear()
 
-dt = 5           # [s]
-dt_min = 5          # [s]
+dt = 0.001           # [s]
+dt_min = 0.001         # [s]
 dt_max = 10.0               # [s]
 
 # time_intervals = [1e-4, 1e-3, 3e-3, 1e-2, 3e-2, 1e-1, 0.2, 10]
@@ -549,7 +549,7 @@ options.setValue('-ts_adapt_scale_solve_failed', 0.5) # Scale step by this facto
 options.setValue('-ts_adapt_basic_clip', (0.1, 1.1)) # Admissible decrease/increase factor in step size (TSAdaptBasicSetClip)
 options.setValue('-ts_adapt_basic_safety', 1.0) # Safety factor relative to target error ()
 options.setValue('-ts_adapt_basic_reject_safety', 0.5) # Extra safety factor to apply if the last step was rejected ()
-options.setValue('-ts_adapt_basic_always_accept', True) # Always accept the step regardless of whether local truncation error meets goal ()
+options.setValue('-ts_adapt_basic_always_accept', False) # Always accept the step regardless of whether local truncation error meets goal ()
 options.setValue('-ts_monitor', None)
 
 
