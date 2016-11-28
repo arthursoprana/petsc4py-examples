@@ -103,7 +103,8 @@ def configuration(parent_package='',top_path=None):
     config = Configuration('', parent_package, top_path)
     config.add_extension('CompositeSimple1D',
                          sources = ['CompositeSimple1D.pyx',
-                                    'CompositeSimple1Dimpl.c'],
+                                    'CompositeSimple1Dimpl.c',
+                                    'multiblock/multiblock.c'],
                          depends = ['CompositeSimple1Dimpl.h'],
                          include_dirs=INCLUDE_DIRS + [os.curdir],
                          libraries=LIBRARIES,
