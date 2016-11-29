@@ -6,6 +6,17 @@
 #define DMS_SIZE PIPES_SIZE + NODES_SIZE
 
 
+#include <petsc/private/snesimpl.h>     /*I  "petscsnes.h"  I*/
+
+PETSC_EXTERN PetscErrorCode SNESCreate_Multiblock(SNES);
+#undef __FUNCT__
+#define __FUNCT__ "RegisterNewSNES"
+PetscErrorCode RegisterNewSNES() {
+    PetscErrorCode ierr;
+    ierr = SNESRegister("multiblock", SNESCreate_Multiblock); CHKERRQ(ierr);
+    PetscFunctionReturn(0);
+}
+
 #undef __FUNCT__
 #define __FUNCT__ "RedundantSetSize"
 PetscErrorCode RedundantSetSize(DM dm, PetscMPIInt rank, PetscInt N) {

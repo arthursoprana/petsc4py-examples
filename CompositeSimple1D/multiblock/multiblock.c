@@ -93,7 +93,7 @@ static PetscErrorCode SNESMultiblockSetFieldsRuntime_Private(SNES snes)
     ierr    = PetscSNPrintf(name, sizeof(name), "%D", i);CHKERRQ(ierr);
     ierr    = PetscSNPrintf(optionname, sizeof(optionname), "-snes_multiblock_%D_fields", i);CHKERRQ(ierr);
     nfields = mb->bs;
-    ierr    = PetscOptionsGetIntArray(((PetscObject) snes)->prefix, optionname, ifields, &nfields, &flg);CHKERRQ(ierr);   
+    ierr    = PetscOptionsGetIntArray(((PetscObject)snes)->options, ((PetscObject)snes)->prefix, optionname, ifields, &nfields, &flg);CHKERRQ(ierr);
               
     if (!flg) break;
     if (!nfields) SETERRQ(PETSC_COMM_SELF, PETSC_ERR_USER, "Cannot list zero fields");
@@ -150,8 +150,8 @@ static PetscErrorCode SNESMultiblockSetDefaults(SNES snes)
         } else mb->bs = 1;
       }
 
-      ierr = PetscOptionsGetBool(((PetscObject) snes)->prefix, "-snes_multiblock_default", &flg, NULL);CHKERRQ(ierr);
-      ierr = PetscOptionsGetBool(((PetscObject) snes)->prefix, "-snes_multiblock_detect_saddle_point", &stokes, NULL);CHKERRQ(ierr);
+      ierr = PetscOptionsGetBool(((PetscObject)snes)->options, ((PetscObject) snes)->prefix, "-snes_multiblock_default", &flg, NULL);CHKERRQ(ierr);
+      ierr = PetscOptionsGetBool(((PetscObject)snes)->options, ((PetscObject) snes)->prefix, "-snes_multiblock_detect_saddle_point", &stokes, NULL);CHKERRQ(ierr);
       if (stokes) {
         IS       zerodiags, rest;
         PetscInt nmin, nmax;
@@ -225,6 +225,9 @@ PetscErrorCode SNESSetUp_Multiblock(SNES snes)
   if (!mb->issetup) {
     PetscInt  ccsize, rstart, rend, nslots, bs;
     PetscBool sorted;
+
+    // Ensures that matrices are available for SNES, to be called by SNESSetUp_XXX()
+    ierr = SNESSetUpMatrices(snes); CHKERRQ(ierr);
 
     mb->issetup = PETSC_TRUE;
     bs          = mb->bs;
@@ -375,10 +378,20 @@ PetscErrorCode SNESSetUp_Multiblock(SNES snes)
     }
 #endif
   } else {
+
     /* Set up the individual SNESs */
     blocks = mb->blocks;
     i      = 0;
+
+    DM             *subdms;
     while (blocks) {
+      ierr = SNESCreate(PETSC_COMM_SELF, &blocks->snes); CHKERRQ(ierr);
+      ierr = SNESAppendOptionsPrefix(blocks->snes, optionsprefix); CHKERRQ(ierr);
+      ierr = SNESAppendOptionsPrefix(blocks->snes, "sub_"); CHKERRQ(ierr);
+      ierr = SNESSetDM(blocks->snes, subdms[i]); CHKERRQ(ierr);
+      ierr = MPI_Comm_size(PetscObjectComm((PetscObject)nasm->subsnes[i]), &size); CHKERRQ(ierr);
+
+      ierr = SNESSetUpMatrices(blocks->snes); CHKERRQ(ierr);
       /*TODO: Set these correctly */
       /*ierr = SNESSetFunction(blocks->snes, blocks->x, func);CHKERRQ(ierr);*/
       /*ierr = SNESSetJacobian(blocks->snes, blocks->x, jac);CHKERRQ(ierr);*/
@@ -946,7 +959,7 @@ PetscErrorCode SNESMultiblockGetSubSNES(SNES snes, PetscInt *n, SNES *subsnes[])
 M*/
 #undef __FUNCT__
 #define __FUNCT__ "SNESCreate_Multiblock"
-PETSC_EXTERN PetscErrorCode SNESCreate_Multiblock(SNES snes)
+PetscErrorCode SNESCreate_Multiblock(SNES snes)
 {
   SNES_Multiblock *mb;
   PetscErrorCode  ierr;

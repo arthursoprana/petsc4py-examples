@@ -19,6 +19,7 @@ cdef extern from "CompositeSimple1Dimpl.h":
     int FormFunction (PetscTS ts, double t, PetscVec X, PetscVec X_t, PetscVec F, Params *p)    
     int CompositeSetCoupling (PetscDM da)
     int RedundantSetSize (PetscDM dm, int rank, int N)
+    int RegisterNewSNES ()
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
@@ -47,3 +48,9 @@ def redundantSetSize(DM dm, int rank, int N):
     cdef int ierr
     ierr = RedundantSetSize(dm.dm, rank, N)
     if ierr != 0: raise Error(ierr)
+
+def registerNewSNES():
+    cdef int ierr
+    ierr = RegisterNewSNES()
+    if ierr != 0: raise Error(ierr)
+
