@@ -8,17 +8,17 @@ const char *const PCFieldSplitSchurFactTypes[] = {"DIAG","LOWER","UPPER","FULL",
 
 PetscLogEvent KSP_Solve_FS_0,KSP_Solve_FS_1,KSP_Solve_FS_S,KSP_Solve_FS_U,KSP_Solve_FS_L,KSP_Solve_FS_2,KSP_Solve_FS_3,KSP_Solve_FS_4;
 
-typedef struct _PC_FieldSplitLink *PC_FieldSplitLink;
-struct _PC_FieldSplitLink {
-  KSP               ksp;
-  Vec               x,y,z;
-  char              *splitname;
-  PetscInt          nfields;
-  PetscInt          *fields,*fields_col;
-  VecScatter        sctx;
-  IS                is,is_col,is_orig;
-  PC_FieldSplitLink next,previous;
-  PetscLogEvent     event;
+typedef struct _SNES_FieldSplitLink *SNES_FieldSplitLink;
+struct _SNES_FieldSplitLink {
+  SNES                snes;
+  Vec                 x,y,z;
+  char                *splitname;
+  PetscInt            nfields;
+  PetscInt            *fields,*fields_col;
+  VecScatter          sctx;
+  IS                  is,is_col,is_orig;
+  SNES_FieldSplitLink next,previous;
+  PetscLogEvent       event;
 };
 
 typedef struct {
@@ -41,16 +41,16 @@ typedef struct {
   Mat                       schur_user;            /* User-provided preconditioning matrix for the Schur complement */
   PCFieldSplitSchurPreType  schurpre;              /* Determines which preconditioning matrix is used for the Schur complement */
   PCFieldSplitSchurFactType schurfactorization;
-  KSP                       kspschur;              /* The solver for S */
-  KSP                       kspupper;              /* The solver for A in the upper diagonal part of the factorization (H_2 in [El08]) */
-  PC_FieldSplitLink         head;
+  SNES                      snesschur;              /* The solver for S */
+  SNES                      snesupper;              /* The solver for A in the upper diagonal part of the factorization (H_2 in [El08]) */
+  SNES_FieldSplitLink       head;
   PetscBool                 reset;                  /* indicates PCReset() has been last called on this object, hack */
   PetscBool                 isrestrict;             /* indicates PCFieldSplitRestrictIS() has been last called on this object, hack */
   PetscBool                 suboptionsset;          /* Indicates that the KSPSetFromOptions() has been called on the sub-KSPs */
   PetscBool                 dm_splits;              /* Whether to use DMCreateFieldDecomposition() whenever possible */
   PetscBool                 diag_use_amat;          /* Whether to extract diagonal matrix blocks from Amat, rather than Pmat (weaker than -pc_use_amat) */
   PetscBool                 offdiag_use_amat;       /* Whether to extract off-diagonal matrix blocks from Amat, rather than Pmat (weaker than -pc_use_amat) */
-} PC_FieldSplit;
+} SNES_FieldSplit;
 
 /*
     Notes: there is no particular reason that pmat, x, and y are stored as arrays in PC_FieldSplit instead of
@@ -60,7 +60,7 @@ typedef struct {
 
 /* This helper is so that setting a user-provided preconditioning matrix is orthogonal to choosing to use it.  This way the
 * application-provided FormJacobian can provide this matrix without interfering with the user's (command-line) choices. */
-static Mat FieldSplitSchurPre(PC_FieldSplit *jac)
+static Mat FieldSplitSchurPre(SNES_FieldSplit *jac)
 {
   switch (jac->schurpre) {
   case PC_FIELDSPLIT_SCHUR_PRE_SELF: return jac->schur;
@@ -74,211 +74,17 @@ static Mat FieldSplitSchurPre(PC_FieldSplit *jac)
 }
 
 
-#include <petscdraw.h>
-#undef __FUNCT__
-#define __FUNCT__ "PCView_FieldSplit"
-static PetscErrorCode PCView_FieldSplit(PC pc,PetscViewer viewer)
-{
-  PC_FieldSplit     *jac = (PC_FieldSplit*)pc->data;
-  PetscErrorCode    ierr;
-  PetscBool         iascii,isdraw;
-  PetscInt          i,j;
-  PC_FieldSplitLink ilink = jac->head;
-
-  PetscFunctionBegin;
-  ierr = PetscObjectTypeCompare((PetscObject)viewer,PETSCVIEWERASCII,&iascii);CHKERRQ(ierr);
-  ierr = PetscObjectTypeCompare((PetscObject)viewer,PETSCVIEWERDRAW,&isdraw);CHKERRQ(ierr);
-  if (iascii) {
-    if (jac->bs > 0) {
-      ierr = PetscViewerASCIIPrintf(viewer,"  FieldSplit with %s composition: total splits = %D, blocksize = %D\n",PCCompositeTypes[jac->type],jac->nsplits,jac->bs);CHKERRQ(ierr);
-    } else {
-      ierr = PetscViewerASCIIPrintf(viewer,"  FieldSplit with %s composition: total splits = %D\n",PCCompositeTypes[jac->type],jac->nsplits);CHKERRQ(ierr);
-    }
-    if (pc->useAmat) {
-      ierr = PetscViewerASCIIPrintf(viewer,"  using Amat (not Pmat) as operator for blocks\n");CHKERRQ(ierr);
-    }
-    if (jac->diag_use_amat) {
-      ierr = PetscViewerASCIIPrintf(viewer,"  using Amat (not Pmat) as operator for diagonal blocks\n");CHKERRQ(ierr);
-    }
-    if (jac->offdiag_use_amat) {
-      ierr = PetscViewerASCIIPrintf(viewer,"  using Amat (not Pmat) as operator for off-diagonal blocks\n");CHKERRQ(ierr);
-    }
-    ierr = PetscViewerASCIIPrintf(viewer,"  Solver info for each split is in the following KSP objects:\n");CHKERRQ(ierr);
-    ierr = PetscViewerASCIIPushTab(viewer);CHKERRQ(ierr);
-    for (i=0; i<jac->nsplits; i++) {
-      if (ilink->fields) {
-        ierr = PetscViewerASCIIPrintf(viewer,"Split number %D Fields ",i);CHKERRQ(ierr);
-        ierr = PetscViewerASCIIUseTabs(viewer,PETSC_FALSE);CHKERRQ(ierr);
-        for (j=0; j<ilink->nfields; j++) {
-          if (j > 0) {
-            ierr = PetscViewerASCIIPrintf(viewer,",");CHKERRQ(ierr);
-          }
-          ierr = PetscViewerASCIIPrintf(viewer," %D",ilink->fields[j]);CHKERRQ(ierr);
-        }
-        ierr = PetscViewerASCIIPrintf(viewer,"\n");CHKERRQ(ierr);
-        ierr = PetscViewerASCIIUseTabs(viewer,PETSC_TRUE);CHKERRQ(ierr);
-      } else {
-        ierr = PetscViewerASCIIPrintf(viewer,"Split number %D Defined by IS\n",i);CHKERRQ(ierr);
-      }
-      ierr  = KSPView(ilink->ksp,viewer);CHKERRQ(ierr);
-      ilink = ilink->next;
-    }
-    ierr = PetscViewerASCIIPopTab(viewer);CHKERRQ(ierr);
-  }
-
- if (isdraw) {
-    PetscDraw draw;
-    PetscReal x,y,w,wd;
-
-    ierr = PetscViewerDrawGetDraw(viewer,0,&draw);CHKERRQ(ierr);
-    ierr = PetscDrawGetCurrentPoint(draw,&x,&y);CHKERRQ(ierr);
-    w    = 2*PetscMin(1.0 - x,x);
-    wd   = w/(jac->nsplits + 1);
-    x    = x - wd*(jac->nsplits-1)/2.0;
-    for (i=0; i<jac->nsplits; i++) {
-      ierr  = PetscDrawPushCurrentPoint(draw,x,y);CHKERRQ(ierr);
-      ierr  = KSPView(ilink->ksp,viewer);CHKERRQ(ierr);
-      ierr  = PetscDrawPopCurrentPoint(draw);CHKERRQ(ierr);
-      x    += wd;
-      ilink = ilink->next;
-    }
-  }
-  PetscFunctionReturn(0);
-}
 
 #undef __FUNCT__
-#define __FUNCT__ "PCView_FieldSplit_Schur"
-static PetscErrorCode PCView_FieldSplit_Schur(PC pc,PetscViewer viewer)
-{
-  PC_FieldSplit     *jac = (PC_FieldSplit*)pc->data;
-  PetscErrorCode    ierr;
-  PetscBool         iascii,isdraw;
-  PetscInt          i,j;
-  PC_FieldSplitLink ilink = jac->head;
-
-  PetscFunctionBegin;
-  ierr = PetscObjectTypeCompare((PetscObject)viewer,PETSCVIEWERASCII,&iascii);CHKERRQ(ierr);
-  ierr = PetscObjectTypeCompare((PetscObject)viewer,PETSCVIEWERDRAW,&isdraw);CHKERRQ(ierr);
-  if (iascii) {
-    if (jac->bs > 0) {
-      ierr = PetscViewerASCIIPrintf(viewer,"  FieldSplit with Schur preconditioner, blocksize = %D, factorization %s\n",jac->bs,PCFieldSplitSchurFactTypes[jac->schurfactorization]);CHKERRQ(ierr);
-    } else {
-      ierr = PetscViewerASCIIPrintf(viewer,"  FieldSplit with Schur preconditioner, factorization %s\n",PCFieldSplitSchurFactTypes[jac->schurfactorization]);CHKERRQ(ierr);
-    }
-    if (pc->useAmat) {
-      ierr = PetscViewerASCIIPrintf(viewer,"  using Amat (not Pmat) as operator for blocks\n");CHKERRQ(ierr);
-    }
-    switch (jac->schurpre) {
-    case PC_FIELDSPLIT_SCHUR_PRE_SELF:
-      ierr = PetscViewerASCIIPrintf(viewer,"  Preconditioner for the Schur complement formed from S itself\n");CHKERRQ(ierr);break;
-    case PC_FIELDSPLIT_SCHUR_PRE_SELFP:
-      ierr = PetscViewerASCIIPrintf(viewer,"  Preconditioner for the Schur complement formed from Sp, an assembled approximation to S, which uses (lumped, if requested) A00's diagonal's inverse\n");CHKERRQ(ierr);break;
-    case PC_FIELDSPLIT_SCHUR_PRE_A11:
-      ierr = PetscViewerASCIIPrintf(viewer,"  Preconditioner for the Schur complement formed from A11\n");CHKERRQ(ierr);break;
-    case PC_FIELDSPLIT_SCHUR_PRE_FULL:
-      ierr = PetscViewerASCIIPrintf(viewer,"  Preconditioner for the Schur complement formed from the exact Schur complement\n");CHKERRQ(ierr);break;
-    case PC_FIELDSPLIT_SCHUR_PRE_USER:
-      if (jac->schur_user) {
-        ierr = PetscViewerASCIIPrintf(viewer,"  Preconditioner for the Schur complement formed from user provided matrix\n");CHKERRQ(ierr);
-      } else {
-        ierr = PetscViewerASCIIPrintf(viewer,"  Preconditioner for the Schur complement formed from A11\n");CHKERRQ(ierr);
-      }
-      break;
-    default:
-      SETERRQ1(PetscObjectComm((PetscObject)pc), PETSC_ERR_ARG_OUTOFRANGE, "Invalid Schur preconditioning type: %d", jac->schurpre);
-    }
-    ierr = PetscViewerASCIIPrintf(viewer,"  Split info:\n");CHKERRQ(ierr);
-    ierr = PetscViewerASCIIPushTab(viewer);CHKERRQ(ierr);
-    for (i=0; i<jac->nsplits; i++) {
-      if (ilink->fields) {
-        ierr = PetscViewerASCIIPrintf(viewer,"Split number %D Fields ",i);CHKERRQ(ierr);
-        ierr = PetscViewerASCIIUseTabs(viewer,PETSC_FALSE);CHKERRQ(ierr);
-        for (j=0; j<ilink->nfields; j++) {
-          if (j > 0) {
-            ierr = PetscViewerASCIIPrintf(viewer,",");CHKERRQ(ierr);
-          }
-          ierr = PetscViewerASCIIPrintf(viewer," %D",ilink->fields[j]);CHKERRQ(ierr);
-        }
-        ierr = PetscViewerASCIIPrintf(viewer,"\n");CHKERRQ(ierr);
-        ierr = PetscViewerASCIIUseTabs(viewer,PETSC_TRUE);CHKERRQ(ierr);
-      } else {
-        ierr = PetscViewerASCIIPrintf(viewer,"Split number %D Defined by IS\n",i);CHKERRQ(ierr);
-      }
-      ilink = ilink->next;
-    }
-    ierr = PetscViewerASCIIPrintf(viewer,"KSP solver for A00 block\n");CHKERRQ(ierr);
-    ierr = PetscViewerASCIIPushTab(viewer);CHKERRQ(ierr);
-    if (jac->head) {
-      ierr = KSPView(jac->head->ksp,viewer);CHKERRQ(ierr);
-    } else  {ierr = PetscViewerASCIIPrintf(viewer,"  not yet available\n");CHKERRQ(ierr);}
-    ierr = PetscViewerASCIIPopTab(viewer);CHKERRQ(ierr);
-    if (jac->head && jac->kspupper != jac->head->ksp) {
-      ierr = PetscViewerASCIIPrintf(viewer,"KSP solver for upper A00 in upper triangular factor \n");CHKERRQ(ierr);
-      ierr = PetscViewerASCIIPushTab(viewer);CHKERRQ(ierr);
-      if (jac->kspupper) {ierr = KSPView(jac->kspupper,viewer);CHKERRQ(ierr);}
-      else {ierr = PetscViewerASCIIPrintf(viewer,"  not yet available\n");CHKERRQ(ierr);}
-      ierr = PetscViewerASCIIPopTab(viewer);CHKERRQ(ierr);
-    }
-    ierr = PetscViewerASCIIPrintf(viewer,"KSP solver for S = A11 - A10 inv(A00) A01 \n");CHKERRQ(ierr);
-    ierr = PetscViewerASCIIPushTab(viewer);CHKERRQ(ierr);
-    if (jac->kspschur) {
-      ierr = KSPView(jac->kspschur,viewer);CHKERRQ(ierr);
-    } else {
-      ierr = PetscViewerASCIIPrintf(viewer,"  not yet available\n");CHKERRQ(ierr);
-    }
-    ierr = PetscViewerASCIIPopTab(viewer);CHKERRQ(ierr);
-    ierr = PetscViewerASCIIPopTab(viewer);CHKERRQ(ierr);
-  } else if (isdraw && jac->head) {
-    PetscDraw draw;
-    PetscReal x,y,w,wd,h;
-    PetscInt  cnt = 2;
-    char      str[32];
-
-    ierr = PetscViewerDrawGetDraw(viewer,0,&draw);CHKERRQ(ierr);
-    ierr = PetscDrawGetCurrentPoint(draw,&x,&y);CHKERRQ(ierr);
-    if (jac->kspupper != jac->head->ksp) cnt++;
-    w  = 2*PetscMin(1.0 - x,x);
-    wd = w/(cnt + 1);
-
-    ierr = PetscSNPrintf(str,32,"Schur fact. %s",PCFieldSplitSchurFactTypes[jac->schurfactorization]);CHKERRQ(ierr);
-    ierr = PetscDrawStringBoxed(draw,x,y,PETSC_DRAW_RED,PETSC_DRAW_BLACK,str,NULL,&h);CHKERRQ(ierr);
-    y   -= h;
-    if (jac->schurpre == PC_FIELDSPLIT_SCHUR_PRE_USER &&  !jac->schur_user) {
-      ierr = PetscSNPrintf(str,32,"Prec. for Schur from %s",PCFieldSplitSchurPreTypes[PC_FIELDSPLIT_SCHUR_PRE_A11]);CHKERRQ(ierr);
-    } else {
-      ierr = PetscSNPrintf(str,32,"Prec. for Schur from %s",PCFieldSplitSchurPreTypes[jac->schurpre]);CHKERRQ(ierr);
-    }
-    ierr = PetscDrawStringBoxed(draw,x+wd*(cnt-1)/2.0,y,PETSC_DRAW_RED,PETSC_DRAW_BLACK,str,NULL,&h);CHKERRQ(ierr);
-    y   -= h;
-    x    = x - wd*(cnt-1)/2.0;
-
-    ierr = PetscDrawPushCurrentPoint(draw,x,y);CHKERRQ(ierr);
-    ierr = KSPView(jac->head->ksp,viewer);CHKERRQ(ierr);
-    ierr = PetscDrawPopCurrentPoint(draw);CHKERRQ(ierr);
-    if (jac->kspupper != jac->head->ksp) {
-      x   += wd;
-      ierr = PetscDrawPushCurrentPoint(draw,x,y);CHKERRQ(ierr);
-      ierr = KSPView(jac->kspupper,viewer);CHKERRQ(ierr);
-      ierr = PetscDrawPopCurrentPoint(draw);CHKERRQ(ierr);
-    }
-    x   += wd;
-    ierr = PetscDrawPushCurrentPoint(draw,x,y);CHKERRQ(ierr);
-    ierr = KSPView(jac->kspschur,viewer);CHKERRQ(ierr);
-    ierr = PetscDrawPopCurrentPoint(draw);CHKERRQ(ierr);
-  }
-  PetscFunctionReturn(0);
-}
-
-#undef __FUNCT__
-#define __FUNCT__ "PCFieldSplitSetRuntimeSplits_Private"
+#define __FUNCT__ "SNESFieldSplitSetRuntimeSplits_Private"
 /* Precondition: jac->bs is set to a meaningful value */
-static PetscErrorCode PCFieldSplitSetRuntimeSplits_Private(PC pc)
+ static PetscErrorCode SNESFieldSplitSetRuntimeSplits_Private(SNES snes)
 {
-  PetscErrorCode ierr;
-  PC_FieldSplit  *jac = (PC_FieldSplit*)pc->data;
-  PetscInt       i,nfields,*ifields,nfields_col,*ifields_col;
-  PetscBool      flg,flg_col;
-  char           optionname[128],splitname[8],optionname_col[128];
+  PetscErrorCode   ierr;
+  SNES_FieldSplit  *jac = (SNES_FieldSplit*)snes->data;
+  PetscInt         i,nfields,*ifields,nfields_col,*ifields_col;
+  PetscBool        flg,flg_col;
+  char             optionname[128],splitname[8],optionname_col[128];
 
   PetscFunctionBegin;
   ierr = PetscMalloc1(jac->bs,&ifields);CHKERRQ(ierr);
@@ -289,16 +95,16 @@ static PetscErrorCode PCFieldSplitSetRuntimeSplits_Private(PC pc)
     ierr        = PetscSNPrintf(optionname_col,sizeof(optionname_col),"-pc_fieldsplit_%D_fields_col",i);CHKERRQ(ierr);
     nfields     = jac->bs;
     nfields_col = jac->bs;
-    ierr        = PetscOptionsGetIntArray(((PetscObject)pc)->options,((PetscObject)pc)->prefix,optionname,ifields,&nfields,&flg);CHKERRQ(ierr);
-    ierr        = PetscOptionsGetIntArray(((PetscObject)pc)->options,((PetscObject)pc)->prefix,optionname_col,ifields_col,&nfields_col,&flg_col);CHKERRQ(ierr);
+    ierr        = PetscOptionsGetIntArray(((PetscObject)snes)->options,((PetscObject)snes)->prefix,optionname,ifields,&nfields,&flg);CHKERRQ(ierr);
+    ierr        = PetscOptionsGetIntArray(((PetscObject)snes)->options,((PetscObject)snes)->prefix,optionname_col,ifields_col,&nfields_col,&flg_col);CHKERRQ(ierr);
     if (!flg) break;
     else if (flg && !flg_col) {
       if (!nfields) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"Cannot list zero fields");
-      ierr = PCFieldSplitSetFields(pc,splitname,nfields,ifields,ifields);CHKERRQ(ierr);
+      //ierr = PCFieldSplitSetFields(snes,splitname,nfields,ifields,ifields);CHKERRQ(ierr);
     } else {
       if (!nfields || !nfields_col) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"Cannot list zero fields");
       if (nfields != nfields_col) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_USER,"Number of row and column fields must match");
-      ierr = PCFieldSplitSetFields(pc,splitname,nfields,ifields,ifields_col);CHKERRQ(ierr);
+      //ierr = PCFieldSplitSetFields(snes,splitname,nfields,ifields,ifields_col);CHKERRQ(ierr);
     }
   }
   if (i > 0) {
@@ -1213,17 +1019,17 @@ static PetscErrorCode PCReset_FieldSplit(PC pc)
 }
 
 #undef __FUNCT__
-#define __FUNCT__ "PCDestroy_FieldSplit"
-static PetscErrorCode PCDestroy_FieldSplit(PC pc)
+#define __FUNCT__ "SNESDestroy_FieldSplit"
+static PetscErrorCode SNESDestroy_FieldSplit(SNES snes)
 {
-  PC_FieldSplit     *jac = (PC_FieldSplit*)pc->data;
-  PetscErrorCode    ierr;
-  PC_FieldSplitLink ilink = jac->head,next;
+  SNES_FieldSplit     *jac = (SNES_FieldSplit*)snes->data;
+  PetscErrorCode      ierr;
+  SNES_FieldSplitLink ilink = jac->head,next;
 
   PetscFunctionBegin;
-  ierr = PCReset_FieldSplit(pc);CHKERRQ(ierr);
+  ierr = SNESReset_FieldSplit(snes);CHKERRQ(ierr);
   while (ilink) {
-    ierr  = KSPDestroy(&ilink->ksp);CHKERRQ(ierr);
+    ierr  = SNESDestroy(&ilink->snes);CHKERRQ(ierr);
     ierr  = ISDestroy(&ilink->is_orig);CHKERRQ(ierr);
     next  = ilink->next;
     ierr  = PetscFree(ilink->splitname);CHKERRQ(ierr);
@@ -1233,16 +1039,8 @@ static PetscErrorCode PCDestroy_FieldSplit(PC pc)
     ilink = next;
   }
   ierr = PetscFree2(jac->x,jac->y);CHKERRQ(ierr);
-  ierr = PetscFree(pc->data);CHKERRQ(ierr);
-  ierr = PetscObjectComposeFunction((PetscObject)pc,"PCFieldSplitGetSubKSP_C",NULL);CHKERRQ(ierr);
-  ierr = PetscObjectComposeFunction((PetscObject)pc,"PCFieldSplitSetFields_C",NULL);CHKERRQ(ierr);
-  ierr = PetscObjectComposeFunction((PetscObject)pc,"PCFieldSplitSetIS_C",NULL);CHKERRQ(ierr);
-  ierr = PetscObjectComposeFunction((PetscObject)pc,"PCFieldSplitSetType_C",NULL);CHKERRQ(ierr);
-  ierr = PetscObjectComposeFunction((PetscObject)pc,"PCFieldSplitSetBlockSize_C",NULL);CHKERRQ(ierr);
-  ierr = PetscObjectComposeFunction((PetscObject)pc,"PCFieldSplitSetSchurPre_C",NULL);CHKERRQ(ierr);
-  ierr = PetscObjectComposeFunction((PetscObject)pc,"PCFieldSplitGetSchurPre_C",NULL);CHKERRQ(ierr);
-  ierr = PetscObjectComposeFunction((PetscObject)pc,"PCFieldSplitSetSchurFactType_C",NULL);CHKERRQ(ierr);
-  ierr = PetscObjectComposeFunction((PetscObject)pc,"PCFieldSplitRestrictIS_C",NULL);CHKERRQ(ierr);
+  ierr = PetscFree(snes->data);CHKERRQ(ierr);
+
   PetscFunctionReturn(0);
 }
 
@@ -2192,7 +1990,7 @@ static PetscErrorCode  PCFieldSplitSetBlockSize_FieldSplit(PC pc,PetscInt bs)
 }
 
 #undef __FUNCT__
-#define __FUNCT__ "PCFieldSplitSetType"
+#define __FUNCT__ "SNESFieldSplitSetType"
 /*@
    PCFieldSplitSetType - Sets the type of fieldsplit preconditioner.
 
@@ -2212,18 +2010,18 @@ static PetscErrorCode  PCFieldSplitSetBlockSize_FieldSplit(PC pc,PetscInt bs)
 .seealso: PCCompositeSetType()
 
 @*/
-PetscErrorCode  PCFieldSplitSetType(PC pc,PCCompositeType type)
+PetscErrorCode  SNESFieldSplitSetType(SNES snes,PCCompositeType type)
 {
   PetscErrorCode ierr;
 
   PetscFunctionBegin;
   PetscValidHeaderSpecific(pc,PC_CLASSID,1);
-  ierr = PetscTryMethod(pc,"PCFieldSplitSetType_C",(PC,PCCompositeType),(pc,type));CHKERRQ(ierr);
+  ierr = PetscTryMethod(pc,"SNESFieldSplitSetType_C",(SNES,PCCompositeType),(pc,type));CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
 #undef __FUNCT__
-#define __FUNCT__ "PCFieldSplitGetType"
+#define __FUNCT__ "SNESFieldSplitGetType"
 /*@
   PCFieldSplitGetType - Gets the type of fieldsplit preconditioner.
 
@@ -2240,19 +2038,19 @@ PetscErrorCode  PCFieldSplitSetType(PC pc,PCCompositeType type)
 .keywords: PC, set, type, composite preconditioner, additive, multiplicative
 .seealso: PCCompositeSetType()
 @*/
-PetscErrorCode PCFieldSplitGetType(PC pc, PCCompositeType *type)
+PetscErrorCode SNESFieldSplitGetType(SNES snes, PCCompositeType *type)
 {
-  PC_FieldSplit *jac = (PC_FieldSplit*) pc->data;
+  SNES_FieldSplit *jac = (SNES_FieldSplit*) snes->data;
 
   PetscFunctionBegin;
-  PetscValidHeaderSpecific(pc,PC_CLASSID,1);
+  PetscValidHeaderSpecific(snes,PC_CLASSID,1);
   PetscValidIntPointer(type,2);
   *type = jac->type;
   PetscFunctionReturn(0);
 }
 
 #undef __FUNCT__
-#define __FUNCT__ "PCFieldSplitSetDMSplits"
+#define __FUNCT__ "SNESFieldSplitSetDMSplits"
 /*@
    PCFieldSplitSetDMSplits - Flags whether DMCreateFieldDecomposition() should be used to define the splits, whenever possible.
 
@@ -2272,16 +2070,16 @@ PetscErrorCode PCFieldSplitGetType(PC pc, PCCompositeType *type)
 .seealso: PCFieldSplitGetDMSplits()
 
 @*/
-PetscErrorCode  PCFieldSplitSetDMSplits(PC pc,PetscBool flg)
+PetscErrorCode  SNESFieldSplitSetDMSplits(SNES snes,PetscBool flg)
 {
-  PC_FieldSplit  *jac = (PC_FieldSplit*)pc->data;
-  PetscBool      isfs;
-  PetscErrorCode ierr;
+  SNES_FieldSplit  *jac = (SNES_FieldSplit*)snes->data;
+  PetscBool        isfs;
+  PetscErrorCode   ierr;
 
   PetscFunctionBegin;
-  PetscValidHeaderSpecific(pc,PC_CLASSID,1);
-  PetscValidLogicalCollectiveBool(pc,flg,2);
-  ierr = PetscObjectTypeCompare((PetscObject)pc,PCFIELDSPLIT,&isfs);CHKERRQ(ierr);
+  PetscValidHeaderSpecific(snes,PC_CLASSID,1);
+  PetscValidLogicalCollectiveBool(snes,flg,2);
+  ierr = PetscObjectTypeCompare((PetscObject)snes,PCFIELDSPLIT,&isfs);CHKERRQ(ierr);
   if (isfs) {
     jac->dm_splits = flg;
   }
@@ -2290,7 +2088,7 @@ PetscErrorCode  PCFieldSplitSetDMSplits(PC pc,PetscBool flg)
 
 
 #undef __FUNCT__
-#define __FUNCT__ "PCFieldSplitGetDMSplits"
+#define __FUNCT__ "SNESFieldSplitGetDMSplits"
 /*@
    PCFieldSplitGetDMSplits - Returns flag indicating whether DMCreateFieldDecomposition() should be used to define the splits, whenever possible.
 
@@ -2309,117 +2107,40 @@ PetscErrorCode  PCFieldSplitSetDMSplits(PC pc,PetscBool flg)
 .seealso: PCFieldSplitSetDMSplits()
 
 @*/
-PetscErrorCode  PCFieldSplitGetDMSplits(PC pc,PetscBool* flg)
+PetscErrorCode  SNESFieldSplitGetDMSplits(SNES snes,PetscBool* flg)
 {
-  PC_FieldSplit  *jac = (PC_FieldSplit*)pc->data;
-  PetscBool      isfs;
-  PetscErrorCode ierr;
+  SNES_FieldSplit  *jac = (SNES_FieldSplit*)snes->data;
+  PetscBool        isfs;
+  PetscErrorCode   ierr;
 
   PetscFunctionBegin;
-  PetscValidHeaderSpecific(pc,PC_CLASSID,1);
+  PetscValidHeaderSpecific(snes,PC_CLASSID,1);
   PetscValidPointer(flg,2);
-  ierr = PetscObjectTypeCompare((PetscObject)pc,PCFIELDSPLIT,&isfs);CHKERRQ(ierr);
+  ierr = PetscObjectTypeCompare((PetscObject)snes,PCFIELDSPLIT,&isfs);CHKERRQ(ierr);
   if (isfs) {
     if(flg) *flg = jac->dm_splits;
   }
   PetscFunctionReturn(0);
 }
 
-/* -------------------------------------------------------------------------------------*/
-/*MC
-   PCFIELDSPLIT - Preconditioner created by combining separate preconditioners for individual
-                  fields or groups of fields. See the users manual section "Solving Block Matrices" for more details.
-
-     To set options on the solvers for each block append -fieldsplit_ to all the PC
-        options database keys. For example, -fieldsplit_pc_type ilu -fieldsplit_pc_factor_levels 1
-
-     To set the options on the solvers separate for each block call PCFieldSplitGetSubKSP()
-         and set the options directly on the resulting KSP object
-
-   Level: intermediate
-
-   Options Database Keys:
-+   -pc_fieldsplit_%d_fields <a,b,..> - indicates the fields to be used in the %d'th split
-.   -pc_fieldsplit_default - automatically add any fields to additional splits that have not
-                              been supplied explicitly by -pc_fieldsplit_%d_fields
-.   -pc_fieldsplit_block_size <bs> - size of block that defines fields (i.e. there are bs fields)
-.   -pc_fieldsplit_type <additive,multiplicative,symmetric_multiplicative,schur> - type of relaxation or factorization splitting
-.   -pc_fieldsplit_schur_precondition <self,selfp,user,a11,full> - default is a11; see PCFieldSplitSetSchurPre()
-.   -pc_fieldsplit_detect_saddle_point - automatically finds rows with zero or negative diagonal and uses Schur complement with no preconditioner as the solver
-
--    Options prefix for inner solvers when using Schur complement preconditioner are -fieldsplit_0_ and -fieldsplit_1_
-     for all other solvers they are -fieldsplit_%d_ for the dth field, use -fieldsplit_ for all fields
-
-   Notes:
-    Use PCFieldSplitSetFields() to set fields defined by "strided" entries and PCFieldSplitSetIS()
-     to define a field by an arbitrary collection of entries.
-
-      If no fields are set the default is used. The fields are defined by entries strided by bs,
-      beginning at 0 then 1, etc to bs-1. The block size can be set with PCFieldSplitSetBlockSize(),
-      if this is not called the block size defaults to the blocksize of the second matrix passed
-      to KSPSetOperators()/PCSetOperators().
-
-$     For the Schur complement preconditioner if J = ( A00 A01 )
-$                                                    ( A10 A11 )
-$     the preconditioner using full factorization is
-$              ( I   -ksp(A00) A01 ) ( inv(A00)     0  ) (     I          0  )
-$              ( 0         I       ) (   0      ksp(S) ) ( -A10 ksp(A00)  I  )
-     where the action of inv(A00) is applied using the KSP solver with prefix -fieldsplit_0_.  S is the Schur complement
-$              S = A11 - A10 ksp(A00) A01
-     which is usually dense and not stored explicitly.  The action of ksp(S) is computed using the KSP solver with prefix -fieldsplit_splitname_ (where splitname was given
-     in providing the SECOND split or 1 if not give). For PCFieldSplitGetKSP() when field number is 0,
-     it returns the KSP associated with -fieldsplit_0_ while field number 1 gives -fieldsplit_1_ KSP. By default
-     A11 is used to construct a preconditioner for S, use PCFieldSplitSetSchurPre() for all the possible ways to construct the preconditioner for S.
-
-     The factorization type is set using -pc_fieldsplit_schur_fact_type <diag, lower, upper, full>. The full is shown above,
-     diag gives
-$              ( inv(A00)     0   )
-$              (   0      -ksp(S) )
-     note that slightly counter intuitively there is a negative in front of the ksp(S) so that the preconditioner is positive definite. The lower factorization is the inverse of
-$              (  A00   0 )
-$              (  A10   S )
-     where the inverses of A00 and S are applied using KSPs. The upper factorization is the inverse of
-$              ( A00 A01 )
-$              (  0   S  )
-     where again the inverses of A00 and S are applied using KSPs.
-
-     If only one set of indices (one IS) is provided with PCFieldSplitSetIS() then the complement of that IS
-     is used automatically for a second block.
-
-     The fieldsplit preconditioner cannot currently be used with the BAIJ or SBAIJ data formats if the blocksize is larger than 1.
-     Generally it should be used with the AIJ format.
-
-     The forms of these preconditioners are closely related if not identical to forms derived as "Distributive Iterations", see,
-     for example, page 294 in "Principles of Computational Fluid Dynamics" by Pieter Wesseling. Note that one can also use PCFIELDSPLIT
-     inside a smoother resulting in "Distributive Smoothers".
-
-   Concepts: physics based preconditioners, block preconditioners
-
-   There is a nice discussion of block preconditioners in
-
-[El08] A taxonomy and comparison of parallel block multi-level preconditioners for the incompressible Navier-Stokes equations
-       Howard Elman, V.E. Howle, John Shadid, Robert Shuttleworth, Ray Tuminaro, Journal of Computational Physics 227 (2008) 1790--1808
-       http://chess.cs.umd.edu/~elman/papers/tax.pdf
-
-   The Constrained Pressure Preconditioner (CPR) does not appear to be currently implementable directly with PCFIELDSPLIT. CPR solves first the Schur complemented pressure equation, updates the
-   residual on all variables and then applies a simple ILU like preconditioner on all the variables. So it is very much like the full Schur complement with selfp representing the Schur complement but instead
-   of backsolving for the saturations in the last step it solves a full coupled (ILU) system for updates to all the variables.
-
-.seealso:  PCCreate(), PCSetType(), PCType (for list of available types), PC, Block_Preconditioners, PCLSC,
-           PCFieldSplitGetSubKSP(), PCFieldSplitSetFields(), PCFieldSplitSetType(), PCFieldSplitSetIS(), PCFieldSplitSetSchurPre(),
-	   MatSchurComplementSetAinvType()
-M*/
-
 #undef __FUNCT__
-#define __FUNCT__ "PCCreate_FieldSplit"
-PetscErrorCode PCCreate_FieldSplit(PC pc)
+#define __FUNCT__ "SNESCreate_FieldSplit"
+/*PETSC_EXTERN*/ PetscErrorCode SNESCreate_FieldSplit(SNES snes)
 {
-  PetscErrorCode ierr;
-  PC_FieldSplit  *jac;
+  SNES_FieldSplit  *jac;
+  PetscErrorCode   ierr;
 
   PetscFunctionBegin;
-  ierr = PetscNewLog(pc,&jac);CHKERRQ(ierr);
+  snes->ops->destroy        = SNESDestroy_FieldSplit;
+  //snes->ops->setup          = SNESSetUp_FieldSplit;
+  //snes->ops->setfromoptions = SNESSetFromOptions_FieldSplit;
+  //snes->ops->view           = SNESView_FieldSplit;
+  //snes->ops->solve          = SNESSolve_FieldSplit;
+  snes->ops->reset          = SNESReset_FieldSplit;
 
+  snes->usesksp = PETSC_FALSE;
+
+  ierr = PetscNewLog(snes,&jac);CHKERRQ(ierr);
   jac->bs                 = -1;
   jac->nsplits            = 0;
   jac->type               = PC_COMPOSITE_MULTIPLICATIVE;
@@ -2427,23 +2148,14 @@ PetscErrorCode PCCreate_FieldSplit(PC pc)
   jac->schurfactorization = PC_FIELDSPLIT_SCHUR_FACT_FULL;
   jac->dm_splits          = PETSC_TRUE;
 
-  pc->data = (void*)jac;
+  snes->data = (void*)jac;
 
-  pc->ops->apply           = PCApply_FieldSplit;
-  pc->ops->applytranspose  = PCApplyTranspose_FieldSplit;
-  pc->ops->setup           = PCSetUp_FieldSplit;
-  pc->ops->reset           = PCReset_FieldSplit;
-  pc->ops->destroy         = PCDestroy_FieldSplit;
-  pc->ops->setfromoptions  = PCSetFromOptions_FieldSplit;
-  pc->ops->view            = PCView_FieldSplit;
-  pc->ops->applyrichardson = 0;
-
-  ierr = PetscObjectComposeFunction((PetscObject)pc,"PCFieldSplitGetSubKSP_C",PCFieldSplitGetSubKSP_FieldSplit);CHKERRQ(ierr);
-  ierr = PetscObjectComposeFunction((PetscObject)pc,"PCFieldSplitSetFields_C",PCFieldSplitSetFields_FieldSplit);CHKERRQ(ierr);
-  ierr = PetscObjectComposeFunction((PetscObject)pc,"PCFieldSplitSetIS_C",PCFieldSplitSetIS_FieldSplit);CHKERRQ(ierr);
-  ierr = PetscObjectComposeFunction((PetscObject)pc,"PCFieldSplitSetType_C",PCFieldSplitSetType_FieldSplit);CHKERRQ(ierr);
-  ierr = PetscObjectComposeFunction((PetscObject)pc,"PCFieldSplitSetBlockSize_C",PCFieldSplitSetBlockSize_FieldSplit);CHKERRQ(ierr);
-  ierr = PetscObjectComposeFunction((PetscObject)pc,"PCFieldSplitRestrictIS_C",PCFieldSplitRestrictIS_FieldSplit);CHKERRQ(ierr);
+  //ierr = PetscObjectComposeFunction((PetscObject)snes,"SNESFieldSplitGetSubSNES_C", SNESFieldSplitGetSubSNES_FieldSplit);CHKERRQ(ierr);
+  //ierr = PetscObjectComposeFunction((PetscObject)snes,"SNESFieldSplitSetFields_C", SNESFieldSplitSetFields_FieldSplit);CHKERRQ(ierr);
+  //ierr = PetscObjectComposeFunction((PetscObject)snes,"SNESFieldSplitSetIS_C", SNESFieldSplitSetIS_FieldSplit);CHKERRQ(ierr);
+  //ierr = PetscObjectComposeFunction((PetscObject)snes,"SNESFieldSplitSetType_C", SNESFieldSplitSetType_FieldSplit);CHKERRQ(ierr);
+  //ierr = PetscObjectComposeFunction((PetscObject)snes,"SNESFieldSplitSetBlockSize_C", SNESFieldSplitSetBlockSize_FieldSplit);CHKERRQ(ierr);
+  //ierr = PetscObjectComposeFunction((PetscObject)snes,"SNESFieldSplitRestrictIS_C", SNESFieldSplitRestrictIS_FieldSplit);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
