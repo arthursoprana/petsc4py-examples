@@ -105,21 +105,18 @@ def andreussi_gas_liquid(
     factor = np.where(F > 0.36, 1.0 + 29.7 * ((F - 0.36) ** 0.67) * ((liquid_height / diameter) ** 0.2), 1.0)
 
     f = factor * f_g
-    f = correct_friction_factor(D, H, f, hgc=0.01)
+    f = correct_friction_factor(D, H, f, hgc=0.01 * D)
     
     return f
 
 
 def ideal_gas_density_model(P, deriv=False):
-    Z = 1.0
-    R = 8.315
-    T = 300.0
-    M = 16.0e-3
+    a = 316.0
         
     if deriv:
-        return 0 * P + 1 / (Z * (R/M) * T) # 1/a**2
+        return 0 * P + 1 / a**2
     else:
-        return P * M / (Z * R * T)
+        return P / a**2
     
 
 def constant_density_model(P, deriv=False):
@@ -130,10 +127,10 @@ def constant_density_model(P, deriv=False):
         return 1000 + 0*P
     
 def liquid_viscosity_model(P):
-    return 1e-3 + P*0
+    return 5e-2 + P*0
 
 def gas_viscosity_model(P):
-    return 1e-5 + P*0
+    return 5e-6 + P*0
         
 density_model = [ideal_gas_density_model, constant_density_model]
 viscosity_model = [gas_viscosity_model, liquid_viscosity_model]

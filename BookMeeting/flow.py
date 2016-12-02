@@ -1,132 +1,97 @@
 import numpy as np
-import CompositeSimple1D
 from petsc4py import PETSc
-from physics0 import Flow0
-from physics1 import Flow1
+from physics0 import calculate_residualαUP
+from physics1 import calculate_residualαUSP
+from models import density_model, computeGeometricProperties
 
-Flow = Flow0
+calculate_residual = calculate_residualαUSP
 
-class MyTS:
-    def __init__(self):
-        self.log = {}
-    def _log(self, method, *args):
-        self.log.setdefault(method, 0)
-        self.log[method] += 1
 
-    def create(self, ts, *args):
-        self._log('create', *args)
-        self.vec_update = PETSc.Vec()
+class Flow(object):
+    def __init__(self, dm, nx, dof, pipe_length, diameter, nphases, α0, mass_flux_presc, pressure_presc):
+        self.dm  = dm        
+        self.L   = pipe_length
+        self.nx  = nx
+        self.dof = dof
+        self.nphases = nphases
+        self.D =  diameter 
+        self.Mpresc = mass_flux_presc
+        self.Ppresc = pressure_presc
+        self.ρref = np.zeros((nx, nphases))
+        for phase in range(nphases):
+            self.ρref[:, phase] = density_model[phase](1e5)
 
-    def destroy(self, ts, *args):
-        self._log('destroy', *args)
-        self.vec_update.destroy()
-
-    def setFromOptions(self, ts, *args):
-        self._log('setFromOptions', *args)
-
-    def setUp(self, ts, *args):
-        self._log('setUp', ts, *args)
-        self.vec_update = ts.getSolution().duplicate()
-
-    def reset(self, ts, *args):
-        self._log('reset', ts, *args)
-
-    def solveStep(self, ts, t, u, *args):
-        self._log('solveStep', ts, t, u, *args)
-        ts.snes.solve(None, u)
-
-    def adaptStep(self, ts, t, u, *args):
-        self._log('adaptStep', ts, t, u, *args)
-        nx = 1000
-        dof = 5
-        nphases = 2
-        uu = u[...].reshape(nx, dof)         
-        U = uu[:, 0:nphases]
-        cfl = 0.8
-        Umax = np.max(np.abs(U))
-        old_dt = ts.getTimeStep()
-        L = 1000
-        dx = L / (nx - 1)
-        new_dt = cfl * dx / Umax
-        dt_min = 1e-4
-        dt_max = 10.0
+        self.Dh, self.Sw, self.Si, self.H = computeGeometricProperties(α0, self.D)
+    
+    def updateFunction(self, snes, step):
         
-        if ts.diverged:
-            dt = np.maximum(dt_min, 0.5*old_dt)
-        else:
-            if t > 0.1:                
-                dt = np.maximum(dt_min, np.minimum(np.minimum(new_dt, dt_max), 1.1*old_dt))
-            else:
-                dt = ts.getTimeStep()
-        return (dt, True)
+        nphases = self.nphases
+        
+        dof = self.dof
+        nx  = self.nx   
+   
+        sol = snes.getSolution()[...]
+        u = sol.reshape(nx, dof)         
+        #U = u[:, 0:nphases]
+        α = u[:, nphases:-1]
+        α = np.maximum(α, 1e-5)
+        α = np.minimum(α, 1.0)
+        P = u[:, -1]
     
-class PreStep():
-    def __init__(self, prev_sol):
-        self.prev_sol = prev_sol
-    def prestep(self, ts):
-        print('inside prestep', ts.reason, ts.diverged)
-        if ts.diverged:
-#             ts.rollBack()
-#             u = ts.getSolution()[...]
-#             u[...] = self.prev_sol.copy()
-#             ts.reason = 0
-#             snes = ts.getSNES()
-#             snes.vec_sol[...] = self.prev_sol.copy()
-#             snes.vec_upd[...] = 0.0
-#             snes.vec_rhs[...] = 0.0
-#             F = snes.getFunction()[0]
-#             F[...] = 0.0
-#             snes.reason = 0
-            ts.setTimeStep(0.001)
-            return 0
-    
-    def poststep(self, ts):
-        print('inside POSTSTEP', ts.reason, ts.diverged)
-        if ts.diverged:
-#             ts.rollBack()
-#             u = ts.getSolution()[...]
-#             u[...] = self.prev_sol.copy()
-#             ts.reason = 0
-#             snes = ts.getSNES()
-#             snes.vec_sol[...] = self.prev_sol.copy()
-#             snes.vec_upd[...] = 0.0
-#             snes.vec_rhs[...] = 0.0
-#             F = snes.getFunction()[0]
-#             F[...] = 0.0
-#             snes.reason = 0
-#             b = snes.vec_rhs
-#             x = snes.vec_sol
-#             F = snes.getFunction()[0]
-#             J, P, _ = snes.getJacobian()
-#             snes.computeFunction(x, F)
-#             snes.computeJacobian(x, J, P)
-#             snes.solve(b,x)
-#             
-#             ts.setTimeStep(0.001)
-#             F = ts.getIFunction()[0]
-#             t = ts.time
+        # Compute ref density
+        for phase in range(nphases):
+            self.ρref[:, phase] = density_model[phase](P*1e5)
             
-#             x = ts.getSolution()
-#             x[...] = self.prev_sol.copy()
-#             xdot = x.copy()
-#             xdot[...] = 0.0
-#             ts.computeIFunction(t, x, xdot, F)
-#             dt = ts.time_step
-#             a = 1/dt
-#             ts.computeIJacobian(t, x, xdot, a, J, P)
-#             snes.solve(b,x)
-            return 0
-            
+        # Compute geometric properties
+        self.Dh, self.Sw, self.Si, self.H = computeGeometricProperties(α, self.D)
 
+
+        
+    def evalFunction(self, ts, t, x, xdot, f):
+        dm  = self.dm
+        L   = self.L
+        dof = self.dof
+        nx  = self.nx
+        nphases = self.nphases
+        dt = ts.getTimeStep()
+        
+        with dm.getAccess(x, locs=None) as Xs:
+            with dm.getAccess(xdot, locs=None) as X_ts:
+                with dm.getAccess(f, locs=None) as Fs:
+                    
+                    for X, X_t, F in zip(Xs[:], X_ts[:], Fs[:]):   
+                        udot = X_t.getArray(readonly=True)
+                        u    = X.getArray(readonly=True)
+                        
+                        udot = udot.reshape(nx, dof)
+                        
+                        dtU = udot[:, 0:nphases]
+                        dtα = udot[:, nphases:-1]
+                        dtP = udot[:, -1]
+                        
+                        u = u.reshape(nx, dof)
+                        
+                        U = u[:, 0:nphases]
+                        α = u[:, nphases:-1]
+                        P = u[:, -1]
+
+                        dx = L / (nx - 1)
+            
+                        residual = calculate_residual(dt, U, dtU, α, dtα, P, dtP, dx, nx, dof, self.Mpresc, self.Ppresc, 
+                                                      self.ρref, self.D, self.Dh, self.Sw, self.Si, self.H, None)
+                        F.setArray(residual.flatten())
+                        
 def transient_pipe_flow_1D(
     npipes, nx, dof, nphases,
-    pipe_length,
+    pipe_length, diameter,
     initial_time,
     final_time,
     initial_time_step,
     dt_min,
     dt_max,
     initial_solution,    
+    mass_flux_presc,
+    pressure_presc,
     impl_python=False
     ):
     
@@ -134,7 +99,6 @@ def transient_pipe_flow_1D(
     # DAE - https://en.wikipedia.org/wiki/Differential_algebraic_equation
     # https://www.mcs.anl.gov/petsc/petsc-current/docs/manualpages/TS/
     ts = PETSc.TS().create()
-    #ts.createPython(MyTS(), comm=PETSc.COMM_SELF)
     
     # http://www.mcs.anl.gov/petsc/petsc-current/docs/manualpages/DM/index.html
     pipes = []
@@ -161,7 +125,6 @@ def transient_pipe_flow_1D(
 
 #     dm.addDM(dmredundant)
 #     CompositeSimple1D.compositeSetCoupling(dm)
-    CompositeSimple1D.registerNewSNES()
     
     ts.setDM(dm)
         
@@ -169,7 +132,7 @@ def transient_pipe_flow_1D(
 
     if impl_python:     
         α0 = initial_solution.reshape((nx,dof))[:, nphases:-1]
-        pde = Flow(dm, nx, dof, pipe_length, nphases, α0)
+        pde = Flow(dm, nx, dof, pipe_length, diameter, nphases, α0, mass_flux_presc, pressure_presc)
         ts.setIFunction(pde.evalFunction, F)
     else:
         # http://www.mcs.anl.gov/petsc/petsc-current/docs/manualpages/TS/TSSetIFunction.html

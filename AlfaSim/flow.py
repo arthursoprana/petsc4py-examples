@@ -1,0 +1,160 @@
+import numpy as np
+from petsc4py import PETSc
+from physics0 import calculate_residualαUP
+from physics1 import calculate_residualαUSP
+from models import density_model, computeGeometricProperties
+
+calculate_residual = calculate_residualαUSP
+
+
+class Solver(object):
+    def __init__(self, nx, dof, pipe_length, diameter, nphases, α0, mass_flux_presc, pressure_presc):       
+        self.L   = pipe_length
+        self.nx  = nx
+        self.dof = dof
+        self.nphases = nphases
+        self.D =  diameter 
+        self.Mpresc = mass_flux_presc
+        self.Ppresc = pressure_presc
+        self.ρref = np.zeros((nx, nphases))
+        
+        for phase in range(nphases):
+            self.ρref[:, phase] = density_model[phase](1e5)
+
+        self.Dh, self.Sw, self.Si, self.H = computeGeometricProperties(α0, self.D)        
+        
+        self.snes = PETSc.SNES().create()
+        
+        # Auxiliary to be changed -> Build matrix structure
+#         boundary_type = PETSc.DMDA.BoundaryType.GHOSTED
+        dmda = PETSc.DMDA().create([nx], dof=dof, stencil_width=1, stencil_type='star')
+        self.snes.setDM(dmda)
+        
+        self.F = dmda.createGlobalVec()
+        self.X = dmda.createGlobalVec()
+        self.Xold = dmda.createGlobalVec()
+        
+        self.snes.setUpdate(self.update_function)
+        self.snes.setFunction(self.form_function, self.F)
+        self.snes.setUseFD() # Enables coloring, same as -snes_fd_color
+        self.snes.setFromOptions()
+        
+        self.initial_time = 0.0
+        self.current_time = 0.0
+        self.final_time = 0.0
+        self.initial_timestep = 0.0
+        self.timestep = 0.0
+        
+    def set_initial_timestep(self, initial_timestep):
+        self.timestep = initial_timestep
+        
+    def set_min_timestep(self, min_timestep):
+        self.min_timestep = min_timestep
+        
+    def set_max_timestep(self, max_timestep):
+        self.max_timestep = max_timestep
+  
+    def set_initial_solution(self, initial_solution):
+        self.X[...] = initial_solution
+        self.Xold[...] = initial_solution.copy()
+        
+    def set_duration(self, initial_time, final_time):
+        self.initial_time = initial_time
+        self.final_time = final_time
+        
+    def solve(self):        
+        while self.current_time < self.final_time:
+            print('************  \n  \t\t\tCurrent time %g' % self.current_time)
+            #self.F[...] = 0.0
+            self.snes.solve(None, self.X)
+#             J, P, _ = self.snes.getJacobian()
+#             J.zeroEntries()
+#             P.zeroEntries()
+            self.Xold = self.X.copy()
+            self.current_time += self.timestep
+        
+    def update_function(self, snes, step):
+        
+        nphases = self.nphases
+        
+        dof = self.dof
+        nx  = self.nx   
+   
+        sol = snes.getSolution()[...]
+        u = sol.reshape(nx, dof)         
+        #U = u[:, 0:nphases]
+        α = u[:, nphases:-1]
+        α = np.maximum(α, 1e-5)
+        α = np.minimum(α, 1.0)
+        P = u[:, -1]
+    
+        # Compute ref density
+        for phase in range(nphases):
+            self.ρref[:, phase] = density_model[phase](P*1e5)
+            
+        # Compute geometric properties
+        self.Dh, self.Sw, self.Si, self.H = computeGeometricProperties(α, self.D)
+
+
+        
+    def form_function(self, snes, X, F):       
+        L   = self.L
+        dof = self.dof
+        nx  = self.nx
+        nphases = self.nphases
+        dt = self.timestep
+
+        uold = self.Xold.getArray()
+        u    = X.getArray(readonly=True)
+        udot = (u - uold) / dt
+        
+        udot = udot.reshape(nx, dof)
+        
+        dtU = udot[:, 0:nphases]
+        dtα = udot[:, nphases:-1]
+        dtP = udot[:, -1]
+        
+        u = u.reshape(nx, dof)
+        
+        U = u[:, 0:nphases]
+        α = u[:, nphases:-1]
+        P = u[:, -1]
+
+        dx = L / (nx - 1)
+
+        residual = calculate_residual(dt, U, dtU, α, dtα, P, dtP, dx, nx, dof, self.Mpresc, self.Ppresc, 
+                                      self.ρref, self.D, self.Dh, self.Sw, self.Si, self.H, None)
+        F.setArray(residual.flatten())
+                      
+                        
+def transient_pipe_flow_1D(
+    npipes, nx, dof, nphases,
+    pipe_length, diameter,
+    initial_time,
+    final_time,
+    initial_time_step,
+    dt_min,
+    dt_max,
+    initial_solution,    
+    mass_flux_presc,
+    pressure_presc,
+    impl_python=False
+    ):
+        
+    α0 = initial_solution.reshape((nx,dof))[:, nphases:-1]
+    solver = Solver(nx, dof, pipe_length, diameter, nphases, α0, mass_flux_presc, pressure_presc)
+    solver.set_initial_solution(initial_solution)  
+
+    solver.set_duration(initial_time, final_time)
+
+    solver.set_initial_timestep(initial_time_step)
+    solver.set_min_timestep(dt_min)
+    solver.set_min_timestep(dt_max)    
+    
+    solver.solve()  
+    
+    final_dt = solver.timestep
+    
+    x = solver.X
+    
+    return x, final_dt

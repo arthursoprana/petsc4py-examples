@@ -4,30 +4,27 @@ from models import density_model, viscosity_model, andreussi_gas_liquid,\
     computeGeometricProperties
 
 
-def calculate_residual(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, ρrefT, D, DhT=None, SwT=None, Si=None, H=None, fi=None):
+def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc, Ppresc, ρrefT, D, DhT=None, SwT=None, Si=None, H=None, fi=None):
     f = np.zeros((nx, dof))    
     
     nphases = αT.shape[1] 
-    
-    Ppresc  = 1.0 # [bar]
-    USpresc = [3.0, 0.6] # [m/s]
-    
                       
     A = 0.25 * np.pi * D ** 2 # [m]
     ΔV = A * dx
     
     ρg = density_model[0](P*1e5)
     
-    αT = np.maximum(αT, 0.0)
+    αT = np.maximum(αT, 1e-5)
     αT = np.minimum(αT, 1.0)
     
     if H is None:
         DhT, SwT, Si, H = computeGeometricProperties(αT, D)
     
+    Ur = UT[:, 0] - UT[:, 1]
+    
     if fi is None:
         μg = viscosity_model[0](P*1e5)
         Dhg = DhT[:, 0]    
-        Ur = np.abs(UT[:, 0] - UT[:, 1])
         Rei = ρg * np.abs(Ur) * Dhg / μg + 1e-3
 
         fi = andreussi_gas_liquid(
@@ -38,11 +35,12 @@ def calculate_residual(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, ρrefT, D,
             H,
             density_model[1](P*1e5),
             ρg,
-            Ur,
+            np.abs(Ur),
             A * αT[:, 0]
         )        
 
-    
+    τi = 0.5 * fi * ρg * np.abs(Ur) * Ur   
+    sign_τ = [+1, -1]
     
     for phase in range(nphases):
         
@@ -77,10 +75,7 @@ def calculate_residual(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, ρrefT, D,
         Rew = ρ * np.abs(U) * Dhf / μ
     
         fw = colebrook_white_explicit_friction_factor(Rew, None, D, absolute_rugosity=1e-5)
-        τw = 0.5 * fw * ρf * np.abs(U) * U          
-        
-        Ur = U - np.take(UT, phase+1, axis=1, mode='wrap')
-        τi = 0.5 * fi * ρg * np.abs(Ur) * Ur    
+        τw = 0.5 * fw * ρf * np.abs(U) * U 
         
         ######################################
         # MOMENTUM CENTRAL NODES
@@ -102,7 +97,7 @@ def calculate_residual(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, ρrefT, D,
             - α[1:-1] * ρ[1:-1] * Uc[ :-1] * A * ((β[ :-1] - 0.5) * U[1:-1] + (β[ :-1] + 0.5) * U[ :-2]) \
             + αf[1:-1] * (P[1:-1] - P[:-2]) * 1e5 * A \
             + αf[1:-1] * ρf[1:-1] * g * np.cos(θ) * A * (H[1:-1] - H[:-2])  \
-            + τw[1:-1] * (Swf[1:-1] / A) * ΔV + τi[1:-1] * (Sif[1:-1] / A) * ΔV
+            + τw[1:-1] * (Swf[1:-1] / A) * ΔV + sign_τ[phase] * τi[1:-1] * (Sif[1:-1] / A) * ΔV
         
         # Momentum balance for half control volume
         f[-1, phase] += \
@@ -113,10 +108,10 @@ def calculate_residual(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, ρrefT, D,
             - α[-1] * ρ[-1] * Uc[-1] * A * ((β[-1] - 0.5) * U[-1] + (β[-1] + 0.5) * U[-2]) \
             + αf[-1] * (Ppresc - P[-2]) * 1e5 * A \
             + αf[-1] * ρf[-1] * g * np.cos(θ) * A * (H[-1] - H[-2])  \
-            + τw[-1] * (Swf[-1] / A) * ΔV + τi[-1] * (Sif[-1] / A) * ΔV
+            + τw[-1] * (Swf[-1] / A) * ΔV + sign_τ[phase] * τi[-1] * (Sif[-1] / A) * ΔV
 
-        f[1:, phase] /= USpresc[phase] * ρref[:-1] * 1e8 #/ dx
-#         f[1:, phase] /= USpresc[phase] * ρf[1:] * 1e6
+        f[1:, phase] /= ρref[:-1] * 1e8
+#         f[1:, phase] /= USpresc[phase] * ρref[1:] * 1e6
         
 #         f[1:, phase] /= ρref[:-1] * 1000 / dt
         ######################################
@@ -139,10 +134,10 @@ def calculate_residual(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, ρrefT, D,
         # boundaries            
         # Momentum            
         if αf[0] < 1e-3: # Fix for low α value
-            f[ 0,phase] = -(USpresc[phase] - U[0] * 0.001)
-        else:            
-            f[ 0,phase] = -(USpresc[phase] - U[0] * αf[0])
-        
+            f[0,phase] = (Mpresc[phase] - 0.001 * ρf[0] * U[0] * A)
+        else:       
+            f[0,phase] = -(Mpresc[phase] - αf[0] * ρf[0] * U[0] * A)
+
         # Mass
         f[-1,phase+nphases] = -(α[-2] - α[-1])
     
@@ -153,115 +148,3 @@ def calculate_residual(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, ρrefT, D,
 #     f[ -1, -1] = Ppresc -  P[-1]
     
     return f
-
-class Flow0(object):
-    def __init__(self, dm, nx, dof, pipe_length, nphases, α0):
-        self.dm  = dm        
-        self.L   = pipe_length
-        self.nx  = nx
-        self.dof = dof
-        self.nphases = nphases
-        self.D =  0.1 # [m]   
-        self.ρref = np.zeros((nx, nphases))
-        for phase in range(nphases):
-            self.ρref[:, phase] = density_model[phase](1e5)
-
-        self.Dh, self.Sw, self.Si, self.H = computeGeometricProperties(α0, self.D)
-        
-        #self.fi = np.zeros(nx)
-    
-    def updateFunction(self, snes, step):
-        
-        nphases = self.nphases
-        
-        dof = self.dof
-        nx  = self.nx   
-   
-        sol = snes.getSolution()[...]
-        u = sol.reshape(nx, dof)         
-        #U = u[:, 0:nphases]
-        α = u[:, nphases:-1]
-        α = np.maximum(α, 1e-5)
-        α = np.minimum(α, 1.0)
-        P = u[:, -1]
-    
-        # Compute ref density
-        for phase in range(nphases):
-            self.ρref[:, phase] = density_model[phase](P*1e5)
-            
-        # Compute geometric properties
-        self.Dh, self.Sw, self.Si, self.H = computeGeometricProperties(α, self.D)
-
-#         sol = snes.getSolution()[...]
-#         u = sol.reshape(nx, dof)
-#          
-#         U = u[:, 0:nphases]
-#         α = u[:, nphases:-1]
-#         P = u[:, -1]
-#  
-#         u[:, nphases:-1] = np.where(u[:, nphases:-1] < 0.0, 0.0, u[:, nphases:-1])
-#         u[:, nphases:-1] = np.where(u[:, nphases:-1] > 1.0, 1.0, u[:, nphases:-1])
-          
-#         αG = α[:, 0]
-#         αL = α[:, 1]
-#          
-#         u[:, 2] = αG / (αG + αL)
-#         u[:, 3] = αL / (αG + αL)        
-#         snes.getSolution()[...] = u.flatten()
-#         
-#         ρg = density_model[0](P*1e5)
-#         μg = viscosity_model[0](P*1e5)
-#         Dhg = self.Dh[:, 0]
-#     
-#         Ur = np.abs(U[:, 0] - U[:, 1])
-#         Rei = ρg * np.abs(Ur) * Dhg / μg + 1e-3
-#         D = self.D
-#         A = 0.25 * np.pi * D ** 2 
-#         fi = andreussi_gas_liquid(
-#             Rei,
-#             α[:, 0],
-#             D,
-#             1e-5,
-#             self.H,
-#             density_model[1](P*1e5),
-#             ρg,
-#             Ur,
-#             A * α[:, 0]
-#         )
-# 
-#         self.fi = fi
-
-        
-    def evalFunction(self, ts, t, x, xdot, f):
-        dm  = self.dm
-        L   = self.L
-        dof = self.dof
-        nx  = self.nx
-        nphases = self.nphases
-        dt = ts.getTimeStep()
-        
-        with dm.getAccess(x, locs=None) as Xs:
-            with dm.getAccess(xdot, locs=None) as X_ts:
-                with dm.getAccess(f, locs=None) as Fs:
-                    
-                    for X, X_t, F in zip(Xs[:], X_ts[:], Fs[:]):   
-                        udot = X_t.getArray(readonly=True)
-                        u    = X.getArray(readonly=True)
-                        
-                        udot = udot.reshape(nx, dof)
-                        
-                        dtU = udot[:, 0:nphases]
-                        dtα = udot[:, nphases:-1]
-                        dtP = udot[:, -1]
-                        
-                        u = u.reshape(nx, dof)
-                        
-                        U = u[:, 0:nphases]
-                        α = u[:, nphases:-1]
-                        P = u[:, -1]
-
-                        dx = L / (nx - 1)
-            
-                        residual = calculate_residual(dt, U, dtU, α, dtα, P, dtP, dx, nx, dof, self.ρref, 
-                                                      self.D, self.Dh, self.Sw, self.Si, self.H, None)
-                        F.setArray(residual.flatten())

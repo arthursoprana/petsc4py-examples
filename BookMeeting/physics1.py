@@ -8,14 +8,10 @@ IN THIS CODE U IS THE SUPERFICIAL VELOCITY:
     U = u * α
 '''
 
-def calculate_residual(dt, UST, dtUST, αT, dtαT, P, dtP, dx, nx, dof, ρrefT, D, DhT=None, SwT=None, Si=None, H=None, fi=None):
+def calculate_residualαUSP(dt, UST, dtUST, αT, dtαT, P, dtP, dx, nx, dof, Mpresc, Ppresc, ρrefT, D, DhT=None, SwT=None, Si=None, H=None, fi=None):
     f = np.zeros((nx, dof))    
     
     nphases = αT.shape[1] 
-    
-    Ppresc  = 1.0 # [bar]
-    USpresc = [3.0, 0.6] # [m/s]
-    
                       
     A = 0.25 * np.pi * D ** 2 # [m]
     ΔV = A * dx
@@ -46,9 +42,7 @@ def calculate_residual(dt, UST, dtUST, αT, dtαT, P, dtP, dx, nx, dof, ρrefT, 
             ρg,
             Ur,
             A * αT[:, 0]
-        )        
-
-    
+        )   
     
     for phase in range(nphases):
         
@@ -121,7 +115,7 @@ def calculate_residual(dt, UST, dtUST, αT, dtαT, P, dtP, dx, nx, dof, ρrefT, 
             + αf[-1] * g * np.cos(θ) * A * (ρ[-1] * H[-1] - ρ[-2] * H[-2])  \
             + τw[-1] * (Swf[-1] / A) * ΔV + τi[-1] * (Sif[-1] / A) * ΔV
 
-        f[1:, phase] /= USpresc[phase] * ρref[:-1] * 1e6 #/ dx
+        f[1:, phase] /= ρref[:-1] * 1e8
 
         ######################################
         ######################################
@@ -139,11 +133,9 @@ def calculate_residual(dt, UST, dtUST, αT, dtαT, P, dtP, dx, nx, dof, ρrefT, 
    
         f[:-1, -1] += f[:-1, phase+nphases] / ρref[:-1] - α[:-1]
 
-        
         # boundaries            
-        # Momentum            
-         
-        f[ 0,phase] = -(USpresc[phase] - US[0])
+        # Momentum     
+        f[0,phase] = -(Mpresc[phase] - ρf[0] * US[0] * A)
         
         # Mass
         f[-1,phase+nphases] = -(α[-2] - α[-1])
@@ -155,76 +147,3 @@ def calculate_residual(dt, UST, dtUST, αT, dtαT, P, dtP, dx, nx, dof, ρrefT, 
     
     return f
 
-class Flow1(object):
-    def __init__(self, dm, nx, dof, pipe_length, nphases, α0):
-        self.dm  = dm        
-        self.L   = pipe_length
-        self.nx  = nx
-        self.dof = dof
-        self.nphases = nphases
-        self.D =  0.1 # [m]   
-        self.ρref = np.zeros((nx, nphases))
-        for phase in range(nphases):
-            self.ρref[:, phase] = density_model[phase](1e5)
-
-        self.Dh, self.Sw, self.Si, self.H = computeGeometricProperties(α0, self.D)
-        
-        #self.fi = np.zeros(nx)
-    
-    def updateFunction(self, snes, step):
-        
-        nphases = self.nphases
-        
-        dof = self.dof
-        nx  = self.nx   
-   
-        sol = snes.getSolution()[...]
-        u = sol.reshape(nx, dof)         
-        #U = u[:, 0:nphases]
-        α = u[:, nphases:-1]
-        α = np.maximum(α, 1e-5)
-        α = np.minimum(α, 1.0)
-        P = u[:, -1]
-    
-        # Compute ref density
-        for phase in range(nphases):
-            self.ρref[:, phase] = density_model[phase](P*1e5)
-            
-        # Compute geometric properties
-        self.Dh, self.Sw, self.Si, self.H = computeGeometricProperties(α, self.D)
-
-
-        
-    def evalFunction(self, ts, t, x, xdot, f):
-        dm  = self.dm
-        L   = self.L
-        dof = self.dof
-        nx  = self.nx
-        nphases = self.nphases
-        dt = ts.getTimeStep()
-        
-        with dm.getAccess(x, locs=None) as Xs:
-            with dm.getAccess(xdot, locs=None) as X_ts:
-                with dm.getAccess(f, locs=None) as Fs:
-                    
-                    for X, X_t, F in zip(Xs[:], X_ts[:], Fs[:]):   
-                        udot = X_t.getArray(readonly=True)
-                        u    = X.getArray(readonly=True)
-                        
-                        udot = udot.reshape(nx, dof)
-                        
-                        dtU = udot[:, 0:nphases]
-                        dtα = udot[:, nphases:-1]
-                        dtP = udot[:, -1]
-                        
-                        u = u.reshape(nx, dof)
-                        
-                        U = u[:, 0:nphases]
-                        α = u[:, nphases:-1]
-                        P = u[:, -1]
-
-                        dx = L / (nx - 1)
-            
-                        residual = calculate_residual(dt, U, dtU, α, dtα, P, dtP, dx, nx, dof, self.ρref, 
-                                                      self.D, self.Dh, self.Sw, self.Si, self.H, None)
-                        F.setArray(residual.flatten())
