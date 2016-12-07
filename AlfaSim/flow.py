@@ -6,7 +6,7 @@ from physics3 import calculate_residualαUSPsimple
 from physics4 import calculate_residualαUPsimple
 from models import density_model, computeGeometricProperties
 
-calculate_residual = calculate_residualαUPsimple
+calculate_residual = calculate_residualαUP
 
 
 class Solver(object):
@@ -123,9 +123,11 @@ class Solver(object):
         u = sol.reshape(nx, dof)         
         #U = u[:, 0:nphases]
         α = u[:, nphases:-1] # view!
+#         αG = α[:, 0].copy()
+#         αL = α[:, 1].copy()
+#         α[:, 0] = αG / (αG + αL)
+#         α[:, 1] = αL / (αG + αL)
 #         α[:, 0] = np.maximum(α[:, 0], 0.0)
-#         α[:, 0] = np.minimum(α[:, 0], 1.0)         
-#         α[:, 1] = np.maximum(α[:, 1], 0.0)
 #         α[:, 1] = np.minimum(α[:, 1], 0.99999999)
 #         α[:, 1] = α[:, 1] / (α[:, 0] + α[:, 1])
 #         assert np.all(α < 1.00001)

@@ -10,9 +10,9 @@ petsc4py.init(sys.argv)
 options = PETSc.Options()
 options.clear()
 
-options.setValue('-mat_fd_type', 'ds')
-options.setValue('-mat_fd_coloring_err', 1e-3)
-# options.setValue('-mat_fd_coloring_umin', 1e-6)
+options.setValue('-mat_fd_type', 'wp')
+options.setValue('-mat_fd_coloring_err', 1e-2)
+options.setValue('-mat_fd_coloring_umin', 1e-3)
 
 # options.setValue('-mat_view', 'draw')
 # options.setValue('-draw_pause', 5000)
@@ -37,7 +37,7 @@ options.setValue('pc_factor_shift_type', 'NONZERO')
 # options.setValue('pc_factor_nonzeros_along_diagonal', None)
 
 # Normal volume fractions, pure newton is ok
-αG = 0.5
+αG = 0.1
 options.setValue('-snes_type', 'newtonls')
 # options.setValue('-snes_type', 'vinewtonssls')
 # options.setValue('-npc_snes_type', 'ngs')
@@ -51,16 +51,17 @@ options.setValue('-snes_type', 'newtonls')
 # options.setValue('-sub_1_snes_linesearch_type', 'basic')
 # options.setValue('-sub_1_npc_snes_type', 'ngs')
 
-# options.setValue('-snes_linesearch_type', 'basic')
+options.setValue('-snes_linesearch_type', 'basic')
+options.setValue('-snes_linesearch_damping', 1)
 # time_intervals = np.linspace(0.1, 25, num=250) # [s]
 time_intervals = np.linspace(0.1, 250, num=2500) # [s]
 # time_intervals = [20.0]
-dt = 0.0001     # [s]
-dt_min = 0.0001 # [s]
-dt_max = 0.1  # [s]
+dt = 0.001     # [s]
+dt_min = 0.001 # [s]
+dt_max = 0.02  # [s]
 
 
-nx = 100
+nx = 1000
 npipes = 1
 nphases = 2
 dof = nphases * 2 + 1

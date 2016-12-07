@@ -13,14 +13,23 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
     ΔV = A * dx
     
     ρg = density_model[0](P*1e5)
+    ρL = density_model[1](P*1e5)
     
+    ρm = ρg * αT[:, 0] + ρL * αT[:, 1]
+    αG = αT[:, 0].copy()
+    αL = αT[:, 1].copy()
+
+    Ur = UT[:, 0] - UT[:, 1]
+    γ = 1.2 # suggested value
+    Pd = γ * ((αL * ρL * αG * ρg) / ρm) * Ur ** 2
+
+                
 #     αT = np.maximum(αT, 1e-5)
 #     αT = np.minimum(αT, 1.0)
     
     if H is None:
         DhT, SwT, Si, H = computeGeometricProperties(αT, D)
     
-    Ur = UT[:, 0] - UT[:, 1]
     
     if fi is None:
         μg = viscosity_model[0](P*1e5)
@@ -93,10 +102,11 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
             + ρf[1:-1] *  U[1:-1] * dtαc * ΔV \
             + ρf[1:-1] * αf[1:-1] * dtU[1:-1] * ΔV \
             +  U[1:-1] * αf[1:-1] * c[1:-1] * dtPc * 1e5 * ΔV \
-            + α[ :-2] * ρ[ :-2] * Uc[1:  ] * A * ((β[1:  ] - 0.5) * U[2:  ] + (β[1:  ] + 0.5) * U[1:-1]) \
-            - α[1:-1] * ρ[1:-1] * Uc[ :-1] * A * ((β[ :-1] - 0.5) * U[1:-1] + (β[ :-1] + 0.5) * U[ :-2]) \
+            + α[1:-1] * ρ[1:-1] * Uc[1:  ] * A * ((β[1:  ] - 0.5) * U[2:  ] + (β[1:  ] + 0.5) * U[1:-1]) \
+            - α[ :-2] * ρ[ :-2] * Uc[ :-1] * A * ((β[ :-1] - 0.5) * U[1:-1] + (β[ :-1] + 0.5) * U[ :-2]) \
             + αf[1:-1] * (P[1:-1] - P[:-2]) * 1e5 * A \
             + αf[1:-1] * ρf[1:-1] * g * np.cos(θ) * A * (H[1:-1] - H[:-2])  \
+            + (α[1:-1] * Pd[1:-1] - α[:-2] * Pd[:-2]) * A \
             + τw[1:-1] * (Swf[1:-1] / A) * ΔV + sign_τ[phase] * τi[1:-1] * (Sif[1:-1] / A) * ΔV
         
         # Momentum balance for half control volume
@@ -108,12 +118,14 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
             - α[-1] * ρ[-1] * Uc[-1] * A * ((β[-1] - 0.5) * U[-1] + (β[-1] + 0.5) * U[-2]) \
             + αf[-1] * (Ppresc - P[-2]) * 1e5 * A \
             + αf[-1] * ρf[-1] * g * np.cos(θ) * A * (H[-1] - H[-2])  \
+            + (α[-1] * Pd[-1] - α[-2] * Pd[-2]) * A \
             + τw[-1] * (Swf[-1] / A) * ΔV * 0.5 + sign_τ[phase] * τi[-1] * (Sif[-1] / A) * ΔV * 0.5
+
+
 
 #         f[1:, phase] /= ρref[:-1] * 1e8
 #         f[1:, phase] /= USpresc[phase] * ρref[1:] * 1e6
-        
-#         f[1:, phase] /= ρref[:-1] * 1000 / dt
+
         ######################################
         ######################################
         # MASS CENTRAL NODES
@@ -128,8 +140,10 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
                
         ######################################
    
-        f[:-1, -1] += f[:-1, phase+nphases]  - α[:-1]
-#         f[:-1, -1] += f[:-1, phase+nphases] / ρ[:-1] - α[:-1]
+        f[:-1, -1] += f[:-1, phase+nphases]
+#         f[:-1, -1] += f[:-1, phase+nphases] - α[:-1]
+#         f[:-1, -1] += f[:-1, phase+nphases] / ρref[:-1] - α[:-1]
+#         f[:-1, -1] += dt * f[:-1, phase+nphases] / ρ[:-1] - α[:-1]
         
         # boundaries            
         # Momentum            
@@ -141,16 +155,10 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
         # Mass
         f[-1,phase+nphases] = -(α[-2] - α[-1])
     
-    f[:-1, -1] += 1  #  αG + αL = 1
+    #f[:-1, -1] += 1  #  αG + αL = 1
 
     # pressure ghost    
     f[ -1, -1] = -(Ppresc - 0.5 * (P[-1] + P[-2]))
-#     f[ -1, -1] = Ppresc -  P[-1]
-
-#     f[:-1, 2] = 1 - (αT[:-1, 0] + αT[:-1, 1])
-#     denominator = (1 - αT[:-1, 1])
     
-#     f[:-1, 2] = 10000 * np.log(αT[:-1, 0] / denominator)
-#     f[:-1, 2] = 1 - αT[:-1, 0] ** 2 - αT[:-1, 1] **2 - 2 * αT[:-1, 0] * αT[:-1, 1]
-    
+    f[:-1, 2] = 1 - (αT[:-1, 0] + αT[:-1, 1])
     return f

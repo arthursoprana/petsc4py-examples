@@ -98,6 +98,9 @@ class Solver(object):
         
         
 #         self.snes_mom.setType(self.snes_mom.Type.KSPONLY)
+#         ksp_mom = self.snes_mom.getKSP()
+#         ksp_mom.setType(ksp_mom.Type.PREONLY)
+#         pc_mom = ksp_mom.getPC()
 #         self.snes.setType(self.snes.Type.KSPONLY)
         # CHUNCHO!
 #         options = PETSc.Options()
@@ -108,6 +111,9 @@ class Solver(object):
 #         options.setValue('-sub_0_snes_linesearch_type', 'basic')
 #         self.snes.setFromOptions()
 #         
+        self.snes_mom.setTolerances(rtol=1e-5, stol=1e-5, atol=1e-5, max_it=10)
+        self.snes.setTolerances(rtol=1e-50, stol=1e-50, atol=1e-8, max_it=10)
+        
         while self.current_time < self.final_time:
             print('************  \n  \tΔt = %gs\t t = %gs' % (self.Δt, self.current_time))
             max_iter = 10
@@ -115,25 +121,31 @@ class Solver(object):
                 
                 for j in range(5):
                     print('Solve mom')
-                    self.snes_mom.solve(None, self.Xmom)                    
+                    self.snes_mom.solve(None, self.Xmom)             
                     print('Solve mass')
                     self.snes.solve(None, self.X)
                     
                     sol = self.X[...]
                     u = sol.reshape(nx, dof-nphases)
                     α = u[:, :-1] # view!
-                    α[:, 0] = np.maximum(α[:, 0], 0.0)
-                    α[:, 1] = np.minimum(α[:, 1], 1.0)    
+                    P = u[:, -1]
+#                     α[:, 0] = np.maximum(α[:, 0], 0.0)
+#                     α[:, 1] = np.maximum(α[:, 1], 0.0)
+#                     α[:, 0] = np.minimum(α[:, 0], 1.0)    
+#                     α[:, 1] = np.minimum(α[:, 1], 1.0)    
                     αG = α[:, 0]                 
                     αL = α[:, 1]                 
                     α[:, 0] = αG / (αG + αL)
                     α[:, 1] = αL / (αG + αL)
-                
+                    
+                    #for phase in range(nphases):            
+                    #    self.ρref[:, phase] = density_model[phase](P*1e5)
+                        
                 if self.snes.converged:
                     break
-                else:
-                    self.X = self.Xold.copy()
-                    self.Δt = 0.5*self.Δt
+#                 else:
+#                     self.X = self.Xold.copy()
+#                     self.Δt = 0.5*self.Δt
                     
             self.Xold = self.X.copy()
             self.Xmomold = self.Xmom.copy()
@@ -158,10 +170,10 @@ class Solver(object):
 #         α[:, 0] = np.maximum(α[:, 0], 0.0)
 #         α[:, 1] = np.minimum(α[:, 1], 1.0)
 #         
-#         α[:, 0] = α[:, 0] / (α[:, 0] + α[:, 1])
-#         α[:, 1] = α[:, 1] / (α[:, 0] + α[:, 1])
-        
-#         (Mpresc[phase] - 0.001 * ρf[0] * U[0] * A)
+#         αG = α[:, 0]                 
+#         αL = α[:, 1]                 
+#         α[:, 0] = αG / (αG + αL)
+#         α[:, 1] = αL / (αG + αL)
         
         # Compute ref density
         uold = self.Xold[...].reshape(nx, dof-nphases)  
@@ -197,11 +209,10 @@ class Solver(object):
 
         # getting from mom
         uold = self.Xmomold.getArray()
-        u    = self.Xmom.getArray(readonly=True)       
+        u    = self.Xmom.getArray()       
         uold = uold.reshape(nx, nphases)        
-        Uold = uold.copy()        
-        u = u.reshape(nx, nphases)        
-        U = u.copy()
+        Uold = uold.copy()              
+        U = u.reshape(nx, nphases)  
         
         dx = L / (nx - 1)
 

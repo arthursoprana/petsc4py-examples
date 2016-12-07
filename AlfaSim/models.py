@@ -70,7 +70,7 @@ def correct_friction_factor(diameter, liquid_height_center, interface_friction_f
     
     # Tricky one!    
     #fi_bubble = drag_bubble_tomiyama(diameter_b, reynolds_b, liquid_density, gas_density, gas_liquid_surface_tension)
-    fi_bubble = 1e15
+    fi_bubble = 1000
     
     G = 1.0 / (1.0 + np.exp(-100.0 * (beta - 1.0)))
 
