@@ -106,7 +106,7 @@ def andreussi_gas_liquid(
 
     f = factor * f_g
     f = correct_friction_factor(D, H, f, hgc=0.01 * D)
-    
+
     return f
 
 
@@ -163,14 +163,21 @@ def ComputeSectorAngle(volume_fraction, extra_precision=True):
 
 def computeGeometricProperties(α, D):
     assert α.shape[1] == 2, 'Only 2 phases supported!'
+    α = α.copy()
+    α[:, 0] = np.maximum(α[:, 0], 1e-8)
+    α[:, 0] = np.minimum(α[:, 0], 0.99999999)
+    α[:, 1] = 1 - α[:, 0]
     
     δ  = ComputeSectorAngle(α)        
         
     angle = δ[:,1]
     Si = D * np.sin(0.5 * angle)
-    Sw = δ * D  
+    Sw = 0.5 * δ * D  
     H = 0.5 * D * (1.0 - np.cos(0.5 * angle))
-
+    
+    H = np.minimum(H, D)
+    H = np.maximum(H, 0)
+    
     A = 0.25 * np.pi * D ** 2 
     Dh = np.zeros_like(α)
     Dh[:, 0]  = 4.0 * α[:, 0] * A / (Sw[:, 0] + Si) # Closed channel for gas

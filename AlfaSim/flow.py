@@ -2,9 +2,11 @@ import numpy as np
 from petsc4py import PETSc
 from physics0 import calculate_residualαUP
 from physics1 import calculate_residualαUSP
+from physics3 import calculate_residualαUSPsimple
+from physics4 import calculate_residualαUPsimple
 from models import density_model, computeGeometricProperties
 
-calculate_residual = calculate_residualαUSP
+calculate_residual = calculate_residualαUPsimple
 
 
 class Solver(object):
@@ -25,6 +27,7 @@ class Solver(object):
         
         self.snes = PETSc.SNES().create()
         
+        
         # Auxiliary to be changed -> Build matrix structure
 #         boundary_type = PETSc.DMDA.BoundaryType.GHOSTED
         dmda = PETSc.DMDA().create([nx], dof=dof, stencil_width=1, stencil_type='star')
@@ -34,6 +37,29 @@ class Solver(object):
         self.X = dmda.createGlobalVec()
         self.Xold = dmda.createGlobalVec()
         
+        options = PETSc.Options()
+        if options.getString('snes_type') in [self.snes.Type.VINEWTONRSLS, self.snes.Type.VINEWTONSSLS]:
+            snesvi = self.snes
+            
+            xl = np.zeros((nx, dof))
+            xl[:,:nphases] = -100
+            xl[:,-1] = 0
+            xl[:, 2] = 0    
+            xl[:, 3] = 0    
+            
+            xu = np.zeros((nx, dof))    
+            xu[:,:nphases] =  100
+            xu[:,-1] = 100
+            xu[:, 2] = 1
+            xu[:, 3] = 1
+                 
+            xlVec = dmda.createGlobalVec()
+            xuVec = dmda.createGlobalVec()   
+            xlVec.setArray(xl.flatten())
+            xuVec.setArray(xu.flatten())    
+    
+            snesvi.setVariableBounds(xlVec, xuVec)
+            
         self.snes.setUpdate(self.update_function)
         self.snes.setFunction(self.form_function, self.F)
         self.snes.setUseFD() # Enables coloring, same as -snes_fd_color
@@ -42,17 +68,16 @@ class Solver(object):
         self.initial_time = 0.0
         self.current_time = 0.0
         self.final_time = 0.0
-        self.initial_timestep = 0.0
-        self.timestep = 0.0
+        self.Δt  = 0.0
         
     def set_initial_timestep(self, initial_timestep):
-        self.timestep = initial_timestep
+        self.Δt = initial_timestep
         
     def set_min_timestep(self, min_timestep):
-        self.min_timestep = min_timestep
+        self.min_Δt = min_timestep
         
     def set_max_timestep(self, max_timestep):
-        self.max_timestep = max_timestep
+        self.max_Δt = max_timestep
   
     def set_initial_solution(self, initial_solution):
         self.X[...] = initial_solution
@@ -60,19 +85,33 @@ class Solver(object):
         
     def set_duration(self, initial_time, final_time):
         self.initial_time = initial_time
+        self.current_time = initial_time
         self.final_time = final_time
         
     def solve(self):        
         while self.current_time < self.final_time:
-            print('************  \n  \t\t\tCurrent time %g' % self.current_time)
-            #self.F[...] = 0.0
-            self.snes.solve(None, self.X)
-#             J, P, _ = self.snes.getJacobian()
-#             J.zeroEntries()
-#             P.zeroEntries()
+            print('************  \n  \tΔt = %gs\t t = %gs' % (self.Δt, self.current_time))
+            max_iter = 10
+            for i in range(max_iter):
+                self.snes.solve(None, self.X)
+                
+                if self.snes.converged:
+                    break
+                else:
+#                     J, P, _ = self.snes.getJacobian()
+#                     F = self.snes.getFunction()[0]
+#                     J.zeroEntries()
+#                     P.zeroEntries()
+#                     F.zeroEntries()
+                    self.X = self.Xold.copy()
+                    self.Δt = 0.5*self.Δt
+                    
             self.Xold = self.X.copy()
-            self.current_time += self.timestep
-        
+            self.current_time += self.Δt
+            
+            if self.current_time > 0.001:
+                self.Δt = np.maximum(self.min_Δt, np.minimum(self.Δt*1.1, self.max_Δt))
+            
     def update_function(self, snes, step):
         
         nphases = self.nphases
@@ -83,17 +122,46 @@ class Solver(object):
         sol = snes.getSolution()[...]
         u = sol.reshape(nx, dof)         
         #U = u[:, 0:nphases]
-        α = u[:, nphases:-1]
-        α = np.maximum(α, 1e-5)
-        α = np.minimum(α, 1.0)
+        α = u[:, nphases:-1] # view!
+#         α[:, 0] = np.maximum(α[:, 0], 0.0)
+#         α[:, 0] = np.minimum(α[:, 0], 1.0)         
+#         α[:, 1] = np.maximum(α[:, 1], 0.0)
+#         α[:, 1] = np.minimum(α[:, 1], 0.99999999)
+#         α[:, 1] = α[:, 1] / (α[:, 0] + α[:, 1])
+#         assert np.all(α < 1.00001)
+#         assert np.all(α > 1e-5 - 1e-8)
+#         print('vol balance ', α.sum(axis=1))
         P = u[:, -1]
-    
+#         print('α', α.min(), α.max())
+        
         # Compute ref density
-        for phase in range(nphases):
-            self.ρref[:, phase] = density_model[phase](P*1e5)
+        uold = self.Xold[...].reshape(nx, dof)  
+        Pold = uold[:, -1]
+        for phase in range(nphases):            
+            self.ρref[:, phase] = density_model[phase](Pold*1e5)
             
         # Compute geometric properties
         self.Dh, self.Sw, self.Si, self.H = computeGeometricProperties(α, self.D)
+
+
+#         if step > 0:
+#             J,P,_ = snes.getJacobian()
+#             ΔX = snes.getSolutionUpdate()
+#             F = snes.getFunction()[0]
+#             
+#             ksp = snes.getKSP()
+#             ksp.setOperators(A=J, P=P)
+#             ksp.solve(b=-F, x=ΔX)
+#             
+#             J = J[0:nx*dof, 0:nx*dof]
+#             P = P[0:nx*dof, 0:nx*dof]
+#             F = F[...]
+#             I = np.identity(dof*nx)
+#             Δx_numpy = np.linalg.solve(J, -F)
+#             Q = J.copy()
+#             Q[J.diagonal() == 0, J.diagonal() == 0] = 1e-6
+#             Δx_numpy = np.linalg.solve(Q, -F)
+#             print('in jac', np.linalg.norm(ΔX[...] - Δx_numpy))
 
 
         
@@ -102,7 +170,7 @@ class Solver(object):
         dof = self.dof
         nx  = self.nx
         nphases = self.nphases
-        dt = self.timestep
+        dt = self.Δt
 
         uold = self.Xold.getArray()
         u    = X.getArray(readonly=True)
@@ -123,7 +191,7 @@ class Solver(object):
         dx = L / (nx - 1)
 
         residual = calculate_residual(dt, U, dtU, α, dtα, P, dtP, dx, nx, dof, self.Mpresc, self.Ppresc, 
-                                      self.ρref, self.D, self.Dh, self.Sw, self.Si, self.H, None)
+                                      self.ρref, self.D, self.Dh, self.Sw, self.Si, None, None)
         F.setArray(residual.flatten())
                       
                         
@@ -149,11 +217,11 @@ def transient_pipe_flow_1D(
 
     solver.set_initial_timestep(initial_time_step)
     solver.set_min_timestep(dt_min)
-    solver.set_min_timestep(dt_max)    
+    solver.set_max_timestep(dt_max)    
     
     solver.solve()  
     
-    final_dt = solver.timestep
+    final_dt = solver.Δt
     
     x = solver.X
     

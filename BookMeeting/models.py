@@ -168,7 +168,7 @@ def computeGeometricProperties(α, D):
         
     angle = δ[:,1]
     Si = D * np.sin(0.5 * angle)
-    Sw = δ * D  
+    Sw = 0.5 * δ * D  
     H = 0.5 * D * (1.0 - np.cos(0.5 * angle))
 
     A = 0.25 * np.pi * D ** 2 

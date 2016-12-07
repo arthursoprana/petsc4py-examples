@@ -3,7 +3,7 @@ import numpy as np
 import petsc4py
 from petsc4py import PETSc
 from matplotlib import pyplot as plt
-from flow import transient_pipe_flow_1D
+from flow2 import transient_pipe_flow_1D
 
 np.set_printoptions(precision=3, linewidth=300)
 petsc4py.init(sys.argv)
@@ -44,29 +44,30 @@ options.setValue('-snes_type', 'newtonls')
 
 # options.setValue('-snes_type', 'composite')
 # options.setValue('-snes_composite_type', 'additiveoptimal')
-# # options.setValue('-snes_composite_sneses', 'fas,newtonls')
-# options.setValue('-snes_composite_sneses', 'nrichardson,newtonls,fas,ngs')
-# options.setValue('-snes_composite_damping', (1,1,1)) # Damping of the additive composite solvers (SNESCompositeSetDamping)
+# options.setValue('-snes_composite_sneses', 'fas,newtonls')
+# options.setValue('-snes_composite_damping', (0,0.1)) # Damping of the additive composite solvers (SNESCompositeSetDamping)
+# # options.setValue('-snes_composite_sneses', 'nrichardson,newtonls,fas,ngs')
+# # options.setValue('-snes_composite_damping', (1,1,1)) # Damping of the additive composite solvers (SNESCompositeSetDamping)
 # options.setValue('-sub_1_snes_linesearch_type', 'basic')
 # options.setValue('-sub_1_npc_snes_type', 'ngs')
 
 # options.setValue('-snes_linesearch_type', 'basic')
 # time_intervals = np.linspace(0.1, 25, num=250) # [s]
-time_intervals = np.linspace(0.1, 200, num=2500) # [s]
+time_intervals = np.linspace(0.1, 250, num=2500) # [s]
 # time_intervals = [20.0]
-dt = 0.001     # [s]
-dt_min = 0.001 # [s]
-dt_max = (25-0.1)/250  # [s]
+dt = 0.0001     # [s]
+dt_min = 0.0001 # [s]
+dt_max = 0.1  # [s]
 
 
-nx = 10
+nx = 100
 npipes = 1
 nphases = 2
 dof = nphases * 2 + 1
 
     
 Ppresc  = 1.0 # [bar]
-Mpresc = [0.002, 0.3] # [kg/s]    
+Mpresc = [0.02, 3.0] # [kg/s]    
 
 diameter = 0.1 # [m]
 pipe_length = 100.0 # [m]
@@ -82,7 +83,7 @@ f, axarr = plt.subplots(4, sharex=True, figsize=(12,8))
 sols = []
 for i, final_time in enumerate(time_intervals):
 
-    sol, final_dt = transient_pipe_flow_1D(
+    sol, solmom, final_dt = transient_pipe_flow_1D(
         npipes, nx, dof, nphases,
         pipe_length, diameter,
         initial_time,
@@ -96,11 +97,12 @@ for i, final_time in enumerate(time_intervals):
         impl_python=True
         )
     
-    SOL = sol[...].reshape(nx, dof)
-
-    U = SOL[:, 0:nphases]
-    α = SOL[:, nphases:-1]
-    P = SOL[:, -1]
+    SOL = sol[...].reshape(nx, dof-nphases)
+    α = SOL[:, :-1]
+    P = SOL[:,  -1]
+    
+    SOLmom = solmom[...].reshape(nx, nphases)
+    U = SOLmom.copy()
     
     initial_solution[:,0:nphases] = U # Velocity
     initial_solution[:,nphases:-1] = α # vol frac
