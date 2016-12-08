@@ -52,6 +52,9 @@ def calculate_residualαUPsimple(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, 
         
         τi = 0.5 * fi * ρg * np.abs(Ur) * Ur   
         sign_τ = [+1, -1]
+        UG = UT[:, 0]
+        UL = UT[:, 1]        
+        Uother = [UL, UG]
     
     for phase in range(nphases):
         
@@ -167,14 +170,16 @@ def calculate_residualαUPsimple(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, 
                    - αf[1:-1] * (P[1:-1] - P[:-2]) * 1e5 * A / Ap_u[1:-1] \
                    - αf[1:-1] * ρf[1:-1] * g * np.cos(θ) * A * (H[1:-1] - H[:-2]) / Ap_u[1:-1] \
                    - α[ :-2] * ρ[ :-2] * Uc[1:  ] * A * ((β[1:  ] - 0.5) * U[2:  ]) / Ap_u[1:-1] \
-                   + α[1:-1] * ρ[1:-1] * Uc[ :-1] * A * ((β[ :-1] + 0.5) * U[ :-2]) / Ap_u[1:-1]
+                   + α[1:-1] * ρ[1:-1] * Uc[ :-1] * A * ((β[ :-1] + 0.5) * U[ :-2]) / Ap_u[1:-1] \
+                   + 0.5 * fi[1:-1] * ρg[1:-1] * np.abs(Ur[1:-1]) * Uother[phase][1:-1] * (Sif[1:-1] / A) * ΔV / Ap_u[1:-1]
                    
         UU[  -1] = \
                    + ρf[  -1] * αf[-1] * (U[-1] - dtU[-1]) * ΔV / Ap_u[  -1] \
                    - αf[  -1] * (Ppresc  - P[ -2]) * 1e5 * A / Ap_u[  -1] \
                    - αf[-1] * ρf[-1] * g * np.cos(θ) * A * (H[-1] - H[-2]) / Ap_u[  -1] \
                    - α[-1] * ρ[-1] * U[-1] * A * U[-1] / Ap_u[  -1]  \
-                   + α[-1] * ρ[-1] * Uc[-1] * A * ((β[-1] + 0.5) * U[-2]) / Ap_u[  -1]
+                   + α[-1] * ρ[-1] * Uc[-1] * A * ((β[-1] + 0.5) * U[-2]) / Ap_u[  -1] \
+                   + 0.5 * fi[-1] * ρg[-1] * np.abs(Ur[-1]) * Uother[phase][-1] * (Sif[-1] / A) * ΔV / Ap_u[  -1]
 
                        
         ρρ = np.concatenate(([ρ[0]], ρ))

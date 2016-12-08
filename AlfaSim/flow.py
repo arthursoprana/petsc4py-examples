@@ -6,7 +6,7 @@ from physics3 import calculate_residualαUSPsimple
 from physics4 import calculate_residualαUPsimple
 from models import density_model, computeGeometricProperties
 
-calculate_residual = calculate_residualαUP
+calculate_residual = calculate_residualαUPsimple
 
 
 class Solver(object):
