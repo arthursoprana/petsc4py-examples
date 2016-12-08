@@ -104,6 +104,9 @@ class Solver(object):
 #         self.snes.setType(self.snes.Type.KSPONLY)
         # CHUNCHO!
 #         options = PETSc.Options()
+#         options.setValue('-snes_linesearch_damping', 0.99)
+#         self.snes_mom.setFromOptions()
+#         options = PETSc.Options()
 #         options.setValue('-snes_type', 'composite')
 #         options.setValue('-snes_composite_type', 'additiveoptimal')
 #         options.setValue('-snes_composite_sneses', 'newtonls')
@@ -111,7 +114,7 @@ class Solver(object):
 #         options.setValue('-sub_0_snes_linesearch_type', 'basic')
 #         self.snes.setFromOptions()
 #         
-        self.snes_mom.setTolerances(rtol=1e-5, stol=1e-5, atol=1e-5, max_it=10)
+        self.snes_mom.setTolerances(rtol=1e-50, stol=1e-50, atol=1e-5, max_it=10)
         self.snes.setTolerances(rtol=1e-50, stol=1e-50, atol=1e-8, max_it=10)
         
         while self.current_time < self.final_time:

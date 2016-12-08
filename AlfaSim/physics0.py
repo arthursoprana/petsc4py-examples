@@ -11,6 +11,18 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
                       
     A = 0.25 * np.pi * D ** 2 # [m]
     ΔV = A * dx
+    g = GRAVITY_CONSTANT 
+    
+    αG = αT[:, 0]                 
+    αL = αT[:, 1]  
+    αTotal = αG + αL       
+
+    
+    αT = np.zeros((nx, nphases))   
+#     αT[:, 0] = 1 - αL / (αG + αL)
+#     αT[:, 1] = 1 - αG / (αG + αL)
+    αT[:, 0] = αG / (αG + αL)
+    αT[:, 1] = αL / (αG + αL)
     
     ρg = density_model[0](P*1e5)
     ρL = density_model[1](P*1e5)
@@ -21,9 +33,9 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
 
     Ur = UT[:, 0] - UT[:, 1]
     γ = 1.2 # suggested value
-    Pd = γ * ((αL * ρL * αG * ρg) / ρm) * Ur ** 2
-
-                
+    Pd = γ * ((αL * ρL * αG * ρg) / ρm / αTotal ** 2) * Ur ** 2
+#     Pd = αG * αL * (ρL - ρg) * g * D
+ 
 #     αT = np.maximum(αT, 1e-5)
 #     αT = np.minimum(αT, 1.0)
     
@@ -93,8 +105,7 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
         dtPc = 0.5 * (dtP[:-2] + dtP[1:-1])
         dtαc = 0.5 * (dtα[:-2] + dtα[1:-1])
         
-        θ = 0.0 # for now
-        g = GRAVITY_CONSTANT 
+        θ = 0.0 # for now        
            
         β = np.where(Uc > 0.0, 0.5, -0.5)
         # center momentum
@@ -106,8 +117,8 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
             - α[ :-2] * ρ[ :-2] * Uc[ :-1] * A * ((β[ :-1] - 0.5) * U[1:-1] + (β[ :-1] + 0.5) * U[ :-2]) \
             + αf[1:-1] * (P[1:-1] - P[:-2]) * 1e5 * A \
             + αf[1:-1] * ρf[1:-1] * g * np.cos(θ) * A * (H[1:-1] - H[:-2])  \
-            + (α[1:-1] * Pd[1:-1] - α[:-2] * Pd[:-2]) * A \
-            + τw[1:-1] * (Swf[1:-1] / A) * ΔV + sign_τ[phase] * τi[1:-1] * (Sif[1:-1] / A) * ΔV
+            + τw[1:-1] * (Swf[1:-1] / A) * ΔV + sign_τ[phase] * τi[1:-1] * (Sif[1:-1] / A) * ΔV \
+            + αf[1:-1] * (Pd[1:-1] - Pd[:-2]) * A
         
         # Momentum balance for half control volume
         f[-1, phase] += \
@@ -118,10 +129,15 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
             - α[-1] * ρ[-1] * Uc[-1] * A * ((β[-1] - 0.5) * U[-1] + (β[-1] + 0.5) * U[-2]) \
             + αf[-1] * (Ppresc - P[-2]) * 1e5 * A \
             + αf[-1] * ρf[-1] * g * np.cos(θ) * A * (H[-1] - H[-2])  \
-            + (α[-1] * Pd[-1] - α[-2] * Pd[-2]) * A \
-            + τw[-1] * (Swf[-1] / A) * ΔV * 0.5 + sign_τ[phase] * τi[-1] * (Sif[-1] / A) * ΔV * 0.5
+            + τw[-1] * (Swf[-1] / A) * ΔV * 0.5 + sign_τ[phase] * τi[-1] * (Sif[-1] / A) * ΔV * 0.5 \
+            + αf[-1] * (Pd[-1] - Pd[-2]) * A
+  
 
-
+#         if phase == 0:
+#             UG = UT[:, 0]
+#             UL = UT[:, 1]
+#             f[1:-1, phase] += (UG[1:-1] - UL[1:-1]) / αf[1:-1] ** 0.8 * ΔV
+#             f[-1, phase] += (UG[-1] - UL[-1]) / αf[-1] ** 0.8 * ΔV * 0.5
 
 #         f[1:, phase] /= ρref[:-1] * 1e8
 #         f[1:, phase] /= USpresc[phase] * ρref[1:] * 1e6
@@ -140,25 +156,29 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
                
         ######################################
    
-        f[:-1, -1] += f[:-1, phase+nphases]
+#         f[:-1, -1] += f[:-1, phase+nphases]
 #         f[:-1, -1] += f[:-1, phase+nphases] - α[:-1]
 #         f[:-1, -1] += f[:-1, phase+nphases] / ρref[:-1] - α[:-1]
 #         f[:-1, -1] += dt * f[:-1, phase+nphases] / ρ[:-1] - α[:-1]
+#         f[:-1, -1] += - α[:-1]
         
         # boundaries            
         # Momentum            
-        if αf[0] < 1e-3: # Fix for low α value
-            f[0,phase] = (Mpresc[phase] - 0.001 * ρf[0] * U[0] * A)
-        else:       
-            f[0,phase] = -(Mpresc[phase] - αf[0] * ρf[0] * U[0] * A)
-
+#         if αf[0] < 1e-3: # Fix for low α value
+#             f[0,phase] = (Mpresc[phase] - 0.001 * ρf[0] * U[0] * A)
+#         else:       
+#             f[0,phase] = -(Mpresc[phase] - αf[0] * ρf[0] * U[0] * A)
+        f[0,phase] = -(Mpresc[phase] - αf[0] * ρf[0] * U[0] * A)
+        
         # Mass
         f[-1,phase+nphases] = -(α[-2] - α[-1])
     
-    #f[:-1, -1] += 1  #  αG + αL = 1
+#     f[:-1, -1] += 1  #  αG + αL = 1
+    f[:-1, -1] = 1 - αTotal[:-1]
+#     f[:, 0] = UT[:, 0] - UT[:, 1]
 
     # pressure ghost    
     f[ -1, -1] = -(Ppresc - 0.5 * (P[-1] + P[-2]))
     
-    f[:-1, 2] = 1 - (αT[:-1, 0] + αT[:-1, 1])
+#     f[:-1, 2] = 1 - (αT[:-1, 0] + αT[:-1, 1])
     return f

@@ -11,8 +11,8 @@ options = PETSc.Options()
 options.clear()
 
 options.setValue('-mat_fd_type', 'ds')
-options.setValue('-mat_fd_coloring_err', 1e-6)
-# options.setValue('-mat_fd_coloring_umin', 1e-6)
+options.setValue('-mat_fd_coloring_err', 1e-3)
+options.setValue('-mat_fd_coloring_umin', 1e-5)
 
 # options.setValue('-mat_view', 'draw')
 # options.setValue('-draw_pause', 5000)
@@ -55,11 +55,11 @@ options.setValue('-snes_linesearch_type', 'basic')
 time_intervals = np.linspace(0.1, 200, num=2500) # [s]
 # time_intervals = [20.0]
 dt = 0.001     # [s]
-dt_min = 0.001 # [s]
+dt_min = 0.00001 # [s]
 dt_max = (25-0.1)/250  # [s]
 
 
-nx = 100
+nx = 1000
 npipes = 1
 nphases = 2
 dof = nphases * 2 + 1
@@ -125,12 +125,12 @@ for i, final_time in enumerate(time_intervals):
     axarr[1].cla()
     axarr[2].cla()
     axarr[3].cla()
-    axarr[0].plot(xx, αα, '.-')
-    axarr[1].plot(xx, UU, '.-')
-    axarr[2].plot(xx, αα*UU, '.-')
-    axarr[3].plot(xx, PP, 'r.-')
+    axarr[0].plot(xx, αα, '-', linewidth=2)
+    axarr[1].plot(xx, UU, '-', linewidth=2)
+    axarr[2].plot(xx, αα*UU, '-', linewidth=2)
+    axarr[3].plot(xx, PP, 'r-', linewidth=2)
     plt.xlim(0, pipe_length)
-    axarr[0].set_ylim(0, 1)
+    axarr[0].set_ylim(0, 2)
     plt.draw()
     plt.pause(0.0001)
     

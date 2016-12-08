@@ -90,11 +90,40 @@ class Solver(object):
         
     def solve(self):        
         while self.current_time < self.final_time:
-            print('************  \n  \tΔt = %gs\t t = %gs' % (self.Δt, self.current_time))
+            nphases = self.nphases
+            dof = self.dof
+            nx  = self.nx 
+            sol = self.snes.getSolution()[...]
+            if len(sol) > 0:
+                u = sol.reshape(nx, dof)  
+                α = u[:, nphases:-1]       
+                print('************  \n  \tΔt = %gs\t t = %gs and max α is %g' % (self.Δt, self.current_time, α.max()))
+            else:
+                print('************  \n  \tΔt = %gs\t t = %gs' % (self.Δt, self.current_time))
             max_iter = 10
             for i in range(max_iter):
                 self.snes.solve(None, self.X)
                 
+                sol = self.snes.getSolution()[...]
+                u = sol.reshape(nx, dof)
+                α = u[:, nphases:-1] # view!
+                αG = α[:, 0].copy()
+                αL = α[:, 1].copy()
+                αTotal = αG + αL
+                U = u[:, 0:nphases] # view!
+
+                αfTotal = 0.5 * (αTotal[:-1] + αTotal[1:])               
+                αfTotal = np.concatenate(([αfTotal[0]], αfTotal))
+        
+#                 α[:, 0] = αG / αTotal
+#                 α[:, 1] = αL / αTotal
+#                 U[:, 0] *= αfTotal
+#                 U[:, 1] *= αfTotal
+#                 α[:, 0] = np.maximum(α[:, 0], 0.0)
+#                 α[:, 1] = np.minimum(α[:, 1], 0.99999999)
+#                 α[:, 1] = α[:, 1] / (α[:, 0] + α[:, 1])
+
+
                 if self.snes.converged:
                     break
                 else:
@@ -121,18 +150,18 @@ class Solver(object):
    
         sol = snes.getSolution()[...]
         u = sol.reshape(nx, dof)         
-        #U = u[:, 0:nphases]
+        U = u[:, 0:nphases]
         α = u[:, nphases:-1] # view!
 #         αG = α[:, 0].copy()
 #         αL = α[:, 1].copy()
-#         α[:, 0] = αG / (αG + αL)
-#         α[:, 1] = αL / (αG + αL)
-#         α[:, 0] = np.maximum(α[:, 0], 0.0)
-#         α[:, 1] = np.minimum(α[:, 1], 0.99999999)
-#         α[:, 1] = α[:, 1] / (α[:, 0] + α[:, 1])
-#         assert np.all(α < 1.00001)
-#         assert np.all(α > 1e-5 - 1e-8)
-#         print('vol balance ', α.sum(axis=1))
+#         αTotal = αG + αL
+#         αfTotal = 0.5 * (αTotal[:-1] + αTotal[1:])               
+#         αfTotal = np.concatenate(([αfTotal[0]], αfTotal))
+#         α[:, 0] = αG / αTotal
+#         α[:, 1] = αL / αTotal
+#         U[:, 0] *= αfTotal
+#         U[:, 1] *= αfTotal
+#         print('max α is %g' % (α.max()))
         P = u[:, -1]
 #         print('α', α.min(), α.max())
         

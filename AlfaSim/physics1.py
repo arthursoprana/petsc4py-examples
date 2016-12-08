@@ -18,18 +18,20 @@ def calculate_residualαUSP(dt, UST, dtUST, αT, dtαT, P, dtP, dx, nx, dof, Mpr
     
     ρg = density_model[0](P*1e5)
     
-#     αT = np.maximum(αT, 1e-5 * αT)
-#     αT = np.minimum(αT, 1.0)
-    
-#     αG = αT[:, 0].copy()
-#     αL = αT[:, 1].copy()
-# #     
-#     αT = np.zeros((nx, 2))    
-#     αT[:, 0] = αG / (αG + αL)
-#     αT[:, 1] = αL / (αT[:, 0] + αL)
-    
-    UT = np.where(αT > 1e-5, UST / αT, UST)
+    αG = αT[:, 0]                 
+    αL = αT[:, 1]  
+    αTotal = αG + αL       
 
+    
+    αT = np.zeros((nx, nphases))   
+#     αT[:, 0] = 1 - αL / (αG + αL)
+#     αT[:, 1] = 1 - αG / (αG + αL)
+    αT[:, 0] = αG / (αG + αL)
+    αT[:, 1] = αL / (αG + αL)
+    
+#     UT = np.where(αT > 1e-5, UST / αT, UST)
+    UT = UST / αT
+    
     if H is None:
         DhT, SwT, Si, H = computeGeometricProperties(αT, D)
     
@@ -138,7 +140,7 @@ def calculate_residualαUSP(dt, UST, dtUST, αT, dtαT, P, dtP, dx, nx, dof, Mpr
                
         ######################################
    
-        f[:-1, -1] += f[:-1, phase+nphases] / ρref[:-1] - α[:-1]
+        f[:-1, -1] += f[:-1, phase+nphases]
 
         # boundaries            
         # Momentum     
@@ -147,8 +149,9 @@ def calculate_residualαUSP(dt, UST, dtUST, αT, dtαT, P, dtP, dx, nx, dof, Mpr
         # Mass
         f[-1,phase+nphases] = -(α[-2] - α[-1])
     
-    f[:-1, -1] += 1  #  αG + αL = 1
-
+#     f[:-1, -1] += 1  #  αG + αL = 1
+    
+#     f[:-1, -1] = 1 - αTotal[:-1]
     # pressure ghost    
     f[ -1, -1] = -(Ppresc - 0.5 * (P[-1] + P[-2]))
     
