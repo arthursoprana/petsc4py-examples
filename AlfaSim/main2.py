@@ -80,7 +80,7 @@ initial_solution[:,3] = 1-αG # vol frac
 initial_solution[:,-1] = 1.0  # Pressure
 initial_time = 0.0
 
-f, axarr = plt.subplots(4, sharex=True, figsize=(12,8))
+f, axarr = plt.subplots(4, sharex=True, figsize=(16, 10))
 sols = []
 for i, final_time in enumerate(time_intervals):
 

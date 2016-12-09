@@ -140,8 +140,8 @@ def calculate_residual_mass(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof, Mp
             + 0.5 * fi[1:-1] * ρGf[1:-1] * np.abs(Ur[1:-1]) * (Sif[1:-1] / A) * ΔV
 
         Ap_u[-1] = ρf[-1] * αf[-1] * ΔV/dt * 0.5 \
-            + α[-1] * ρ[-1] * U[-1] * A  * \
-            - α[-1] * ρ[-1] * Uc[-1] * A * ((β[-1] - 0.5) ) \
+            + α[-2] * ρ[-2] * U[-1] * A  * \
+            - α[-2] * ρ[-2] * Uc[-1] * A * ((β[-1] - 0.5) ) \
             + 0.5 * fw[-1] * ρf[-1] * np.abs( U[-1]) * (Swf[-1] / A) * ΔV * 0.5 \
             + 0.5 * fi[-1] * ρGf[-1] * np.abs(Ur[-1]) * (Sif[-1] / A) * ΔV * 0.5
 
@@ -156,10 +156,10 @@ def calculate_residual_mass(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof, Mp
                    + 0.5 * fi[1:-1] * ρGf[1:-1] * np.abs(Ur[1:-1]) * Uother[phase][1:-1] * (Sif[1:-1] / A) * ΔV / Ap_u[1:-1]
                    
         UU[-1] = \
-                   - αf[  -1] * (Ppresc  - P[ -2]) * 1e5 * A / Ap_u[  -1] \
+                   - αf[-1] * (Ppresc  - P[ -2]) * 1e5 * A / Ap_u[  -1] \
                    - αf[-1] * ρf[-1] * g * np.cos(θ) * A * (H[-1] - H[-2]) / Ap_u[  -1] \
-                   - α[-1] * ρ[-1] * U[-1] * A * U[-1] / Ap_u[  -1]  \
-                   + α[-1] * ρ[-1] * Uc[-1] * A * ((β[-1] + 0.5) * U[-2]) / Ap_u[  -1] \
+                   - α[-2] * ρ[-2] * U[-1] * A * U[-1] / Ap_u[  -1]  \
+                   + α[-2] * ρ[-2] * Uc[-1] * A * ((β[-1] + 0.5) * U[-2]) / Ap_u[  -1] \
                    + ρfold[-1] * αfold[-1] * Uold[-1] * ΔV/dt * 0.5 / Ap_u[  -1] \
                    + 0.5 * fi[-1] * ρGf[-1] * np.abs(Ur[-1]) * Uother[phase][-1] * (Sif[-1] / A) * ΔV / Ap_u[  -1]
                    
@@ -200,11 +200,13 @@ def calculate_residual_mass(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof, Mp
         # Mass        
         αpresc = 0.5
         f[-1,phase] = α[-1] - ((β[-1] - 0.5) * αpresc + (β[-1] + 0.5) * α[-2])
-    
+#         f[-1,phase] = α[-1] - α[-2]
+        
     #f[:-1, -1] += 1 #  αG + αL = 1
 
     # pressure ghost    
-    f[ -1, -1] = -(Ppresc - 0.5 * (P[-1] + P[-2]))
+#     f[ -1, -1] = -(Ppresc - 0.5 * (P[-1] + P[-2]))
+    f[ -1, -1] = -(Ppresc - P[-1])
     
 #     f[:-1, -1] += 1 - αTotal[:-1]
     
@@ -328,8 +330,8 @@ def calculate_residual_mom(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof, Mpr
         # Momentum balance for half control volume
         f[-1, phase] += \
             + (ρf[-1] * αf[-1] * U[-1] - ρfold[-1] * αfold[-1] * Uold[-1]) * ΔV/dt * 0.5 \
-            + α[-1] * ρ[-1] * U[-1] * A * U[-1] \
-            - α[-1] * ρ[-1] * Uc[-1] * A * ((β[-1] - 0.5) * U[-1] + (β[-1] + 0.5) * U[-2]) \
+            + α[-2] * ρ[-2] * U[-1] * A * U[-1] \
+            - α[-2] * ρ[-2] * Uc[-1] * A * ((β[-1] - 0.5) * U[-1] + (β[-1] + 0.5) * U[-2]) \
             + αf[-1] * (Ppresc - P[-2]) * 1e5 * A \
             + αf[-1] * ρf[-1] * g * np.cos(θ) * A * (H[-1] - H[-2])  \
             + τw[-1] * (Swf[-1] / A) * ΔV * 0.5 + sign_τ[phase] * τi[-1] * (Sif[-1] / A) * ΔV * 0.5
