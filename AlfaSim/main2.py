@@ -38,17 +38,42 @@ options.setValue('pc_factor_shift_type', 'NONZERO')
 
 # Normal volume fractions, pure newton is ok
 αG = 0.1
-options.setValue('-snes_type', 'newtonls')
+# options.setValue('-snes_type', 'newtonls')
 # options.setValue('-snes_type', 'vinewtonssls')
 # options.setValue('-npc_snes_type', 'ngs')
 
-# options.setValue('-snes_type', 'composite')
-# options.setValue('-snes_composite_type', 'additiveoptimal')
-# options.setValue('-snes_composite_sneses', 'fas,newtonls')
-# options.setValue('-snes_composite_damping', (0,0.1)) # Damping of the additive composite solvers (SNESCompositeSetDamping)
+options.setValue('-snes_type', 'composite')
+options.setValue('-snes_composite_type', 'additive')
+options.setValue('-snes_composite_sneses', 'newtonls,newtonls')
+options.setValue('-snes_composite_damping', (1, 1)) # Damping of the additive composite solvers (SNESCompositeSetDamping)
 # # options.setValue('-snes_composite_sneses', 'nrichardson,newtonls,fas,ngs')
 # # options.setValue('-snes_composite_damping', (1,1,1)) # Damping of the additive composite solvers (SNESCompositeSetDamping)
-# options.setValue('-sub_1_snes_linesearch_type', 'basic')
+options.setValue('-sub_0_snes_linesearch_type', 'basic')
+options.setValue('-sub_0_mat_fd_type', 'ds')
+options.setValue('-sub_0_mat_fd_coloring_err', 1e-2)
+options.setValue('-sub_0_mat_fd_coloring_umin', 1e-3)
+options.setValue('-sub_0_pc_type', 'lu')
+options.setValue('-sub_0_ksp_type', 'preonly')
+options.setValue('-sub_0_pc_factor_shift_type', 'NONZERO')
+options.setValue('-sub_0_snes_stol', 1e-50)
+options.setValue('-sub_0_snes_rtol', 1e-50)
+options.setValue('-sub_0_snes_atol', 1e-5)
+options.setValue('-sub_0_snes_monitor_short', None)
+options.setValue('-sub_0_snes_converged_reason', None)
+
+options.setValue('-sub_1_snes_linesearch_type', 'basic')
+options.setValue('-sub_1_mat_fd_type', 'ds')
+options.setValue('-sub_1_mat_fd_coloring_err', 1e-2)
+options.setValue('-sub_1_mat_fd_coloring_umin', 1e-3)
+options.setValue('-sub_1_pc_type', 'lu')
+options.setValue('-sub_1_ksp_type', 'preonly')
+options.setValue('-sub_1_pc_factor_shift_type', 'NONZERO')
+options.setValue('-sub_1_snes_stol', 1e-50)
+options.setValue('-sub_1_snes_rtol', 1e-50)
+options.setValue('-sub_1_snes_atol', 1e-5)
+options.setValue('-sub_1_snes_monitor_short', None)
+options.setValue('-sub_1_snes_converged_reason', None)
+
 # options.setValue('-sub_1_npc_snes_type', 'ngs')
 
 options.setValue('-snes_linesearch_type', 'basic')
@@ -77,7 +102,8 @@ initial_solution = np.zeros((nx,dof))
 initial_solution[:,0:nphases] = 1e-8 # Velocity
 initial_solution[:,2] = αG # vol frac
 initial_solution[:,3] = 1-αG # vol frac
-initial_solution[:,-1] = 1.0  # Pressure
+# initial_solution[:,-1] = np.linspace(5,1.00001,num=nx)  # Pressure
+initial_solution[:,-1] = np.linspace(1,1,num=nx)  # Pressure
 initial_time = 0.0
 
 f, axarr = plt.subplots(4, sharex=True, figsize=(16, 10))
@@ -122,7 +148,7 @@ for i, final_time in enumerate(time_intervals):
     UU = U
     PP = np.concatenate((P[:-1], [1.0]))
     αα = α
-    
+#     f, axarr = plt.subplots(4, sharex=True, figsize=(12,8))
     axarr[0].set_title('Results')
     axarr[0].cla()
     axarr[1].cla()
@@ -134,6 +160,7 @@ for i, final_time in enumerate(time_intervals):
     axarr[3].plot(xx, PP, 'r-', linewidth=2)
     plt.xlim(0, pipe_length)
     axarr[0].set_ylim(0, 1)
+#     plt.show()
     plt.draw()
     plt.pause(0.0001)
     

@@ -39,6 +39,8 @@ class Solver(object):
         self.snes_mom.setDM(dmda_mom)
         
         self.F = dmda_mass.createGlobalVec()
+        self.F0 = dmda_mass.createGlobalVec()
+        self.F1 = dmda_mass.createGlobalVec()
         self.X = dmda_mass.createGlobalVec()
         self.Xold = dmda_mass.createGlobalVec()
   
@@ -54,11 +56,30 @@ class Solver(object):
         self.snes_mom.setFunction(self.form_function_mom, self.Fmom)
         self.snes_mom.setUseFD() # Enables coloring, same as -snes_fd_color
         self.snes_mom.setFromOptions()
+        self.snes_mom.setType(self.snes_mom.Type.NEWTONLS)
         
         self.initial_time = 0.0
         self.current_time = 0.0
         self.final_time = 0.0
         self.Δt  = 0.0
+        
+        
+        snes0 = self.snes.getCompositeSNES(0)
+        snes1 = self.snes.getCompositeSNES(1)
+        
+#         snes0.setFunction(self.form_function_mom, self.Fmom)
+#         snes0.setFunction(self.form_function_mom, self.Fmom)
+#         snes0.setUseFD() # Enables coloring, same as -snes_fd_color
+#         snes0.setFromOptions()        
+        snes0.setUpdate(self.update_function)
+        snes0.setFunction(self.form_function0, self.F0)
+        snes0.setUseFD() # Enables coloring, same as -snes_fd_color
+        snes0.setFromOptions()  
+              
+        snes1.setUpdate(self.update_function)
+        snes1.setFunction(self.form_function, self.F1)
+        snes1.setUseFD() # Enables coloring, same as -snes_fd_color
+        snes1.setFromOptions()        
         
     def set_initial_timestep(self, initial_timestep):
         self.Δt = initial_timestep
@@ -109,11 +130,17 @@ class Solver(object):
 #         options = PETSc.Options()
 #         options.setValue('-snes_type', 'composite')
 #         options.setValue('-snes_composite_type', 'additiveoptimal')
-#         options.setValue('-snes_composite_sneses', 'newtonls')
-#         options.setValue('-snes_composite_damping', (0.3))
+#         options.setValue('-snes_composite_sneses', 'newtonls, newtonls')
+#         options.setValue('-snes_composite_damping', (1.0,1.0))
 #         options.setValue('-sub_0_snes_linesearch_type', 'basic')
 #         self.snes.setFromOptions()
 #         
+        snes0 = self.snes.getCompositeSNES(0)
+        snes1 = self.snes.getCompositeSNES(1)        
+#       
+        snes0.setTolerances(rtol=1e-50, stol=1e-50, atol=1e-8, max_it=10)
+        snes1.setTolerances(rtol=1e-50, stol=1e-50, atol=1e-8, max_it=10)
+        
         self.snes_mom.setTolerances(rtol=1e-50, stol=1e-50, atol=1e-5, max_it=10)
         self.snes.setTolerances(rtol=1e-50, stol=1e-50, atol=1e-8, max_it=10)
         
@@ -221,6 +248,38 @@ class Solver(object):
 
         residual = calculate_residual_mass(dt, U, Uold, α, αold, P, Pold, dx, nx, dof, self.Mpresc, self.Ppresc, 
                                       self.ρref, self.D, self.Dh, self.Sw, self.Si, None, None)
+        F.setArray(residual.flatten())
+        
+    def form_function0(self, snes, X, F):       
+        L   = self.L
+        dof = self.dof
+        nx  = self.nx
+        nphases = self.nphases
+        dt = self.Δt
+
+        uold = self.Xold.getArray()
+        u    = X.getArray(readonly=True)        
+        uold = uold.reshape(nx, dof-nphases)        
+        αold = uold[:, :-1]
+        Pold = uold[:,  -1]
+        
+        u = u.reshape(nx, dof-nphases)
+        
+        α = u[:, :-1]
+        P = u[:,  -1]
+
+        # getting from mom
+        uold = self.Xmomold.getArray()
+        u    = self.Xmom.getArray()       
+        uold = uold.reshape(nx, nphases)        
+        Uold = uold.copy()              
+        U = u.reshape(nx, nphases)  
+        
+        dx = L / (nx - 1)
+
+        residual = calculate_residual_mass(dt, U, Uold, α, αold, P, Pold, dx, nx, dof, self.Mpresc, self.Ppresc, 
+                                      self.ρref, self.D, self.Dh, self.Sw, self.Si, None, None)
+        residual[:, :-1] = 0.0
         F.setArray(residual.flatten())
                       
     def form_function_mom(self, snes, X, F):       
