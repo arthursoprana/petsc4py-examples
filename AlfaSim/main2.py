@@ -53,8 +53,9 @@ options.setValue('-snes_type', 'newtonls')
 
 options.setValue('-snes_linesearch_type', 'basic')
 options.setValue('-snes_linesearch_damping', 1)
-# time_intervals = np.linspace(0.1, 25, num=250) # [s]
 time_intervals = np.linspace(0.1, 250, num=2500) # [s]
+# time_intervals = np.linspace(0.0001, 0.001, num=2500) # [s]
+# time_intervals = np.concatenate(([11], time_intervals)) # [s]
 # time_intervals = [20.0]
 dt = 0.001     # [s]
 dt_min = 0.001 # [s]
@@ -68,13 +69,16 @@ dof = nphases * 2 + 1
 
     
 Ppresc  = 1.0 # [bar]
-Mpresc = [0.02, 3.0] # [kg/s]    
+Mpresc = [0.002, 0.3] # [kg/s]    
 
 diameter = 0.1 # [m]
 pipe_length = 100.0 # [m]
 
 initial_solution = np.zeros((nx,dof))
 initial_solution[:,0:nphases] = 1e-8 # Velocity
+
+αG = np.linspace(0.1,0.1, num=nx)
+# αG[300:310] = 0.001
 initial_solution[:,2] = αG # vol frac
 initial_solution[:,3] = 1-αG # vol frac
 initial_solution[:,-1] = 1.0  # Pressure

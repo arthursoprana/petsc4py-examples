@@ -15,12 +15,10 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
     
     αG = αT[:, 0]                 
     αL = αT[:, 1]  
-    αTotal = αG + αL       
-
+    αTotal = αG + αL 
     
     αT = np.zeros((nx, nphases))   
-#     αT[:, 0] = 1 - αL / (αG + αL)
-#     αT[:, 1] = 1 - αG / (αG + αL)
+
     αT[:, 0] = αG / (αG + αL)
     αT[:, 1] = αL / (αG + αL)
     
@@ -33,7 +31,7 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
 
     Ur = UT[:, 0] - UT[:, 1]
     γ = 1.2 # suggested value
-    Pd = γ * ((αL * ρL * αG * ρg) / ρm / αTotal ** 2) * Ur ** 2
+    Pd = γ * ((αL * ρL * αG * ρg) / ρm / αTotal ** 2) * Ur ** 2 * 0.0
 #     Pd = αG * αL * (ρL - ρg) * g * D
  
 #     αT = np.maximum(αT, 1e-5)
@@ -46,7 +44,7 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
     if fi is None:
         μg = viscosity_model[0](P*1e5)
         Dhg = DhT[:, 0]    
-        Rei = ρg * np.abs(Ur) * Dhg / μg + 1e-3
+        Rei = ρg * np.abs(Ur) * Dhg / μg #+ 1e-3
 
         fi = andreussi_gas_liquid(
             Rei,
@@ -132,28 +130,20 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
             + τw[-1] * (Swf[-1] / A) * ΔV * 0.5 + sign_τ[phase] * τi[-1] * (Sif[-1] / A) * ΔV * 0.5 \
             + αf[-1] * (Pd[-1] - Pd[-2]) * A
   
-
-#         if phase == 0:
-#             UG = UT[:, 0]
-#             UL = UT[:, 1]
-#             f[1:-1, phase] += (UG[1:-1] - UL[1:-1]) / αf[1:-1] ** 0.8 * ΔV
-#             f[-1, phase] += (UG[-1] - UL[-1]) / αf[-1] ** 0.8 * ΔV * 0.5
-
-#         f[1:, phase] /= ρref[:-1] * 1e8
-#         f[1:, phase] /= USpresc[phase] * ρref[1:] * 1e6
-
         ######################################
         ######################################
         # MASS CENTRAL NODES
         ρρ = np.concatenate(([ρ[0]], ρ))
         αα = np.concatenate(([α[0]], α))
         β = np.where(U > 0.0, 0.5, -0.5) 
-        f[:-1, phase+nphases] +=  \
+        
+        fp =  \
             + ρ[:-1] * dtα[:-1] * ΔV \
             + α[:-1] * c[:-1] * dtP[:-1] * 1e5 * ΔV \
             + ((β[1:  ] - 0.5) * ρ[1:  ] * α[1:  ] + (β[1:  ] + 0.5) *  ρ[ :-1]  * α[ :-1]) * U[1:  ] * A \
             - ((β[ :-1] - 0.5) * ρ[ :-1] * α[ :-1] + (β[ :-1] + 0.5) * ρρ[ :-2] * αα[ :-2]) * U[ :-1] * A  
-               
+        f[:-1, phase+nphases] += fp
+        f[:-1, -1] += fp       
         ######################################
    
 #         f[:-1, -1] += f[:-1, phase+nphases]
@@ -174,7 +164,7 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
         f[-1,phase+nphases] = -(α[-2] - α[-1])
     
 #     f[:-1, -1] += 1  #  αG + αL = 1
-    f[:-1, -1] = 1 - αTotal[:-1]
+#     f[:-1, -1] = 1 - αTotal[:-1]
 #     f[:, 0] = UT[:, 0] - UT[:, 1]
 
     # pressure ghost    

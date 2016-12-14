@@ -55,8 +55,8 @@ options.setValue('-snes_linesearch_type', 'basic')
 time_intervals = np.linspace(0.1, 200, num=2500) # [s]
 # time_intervals = [20.0]
 dt = 0.001     # [s]
-dt_min = 0.00001 # [s]
-dt_max = (25-0.1)/250  # [s]
+dt_min = 0.001 # [s]
+dt_max = 0.02  # [s]
 
 
 nx = 1000
@@ -66,7 +66,7 @@ dof = nphases * 2 + 1
 
     
 Ppresc  = 1.0 # [bar]
-Mpresc = [0.02, 3.0] # [kg/s]    
+Mpresc = [0.002, 0.3] # [kg/s]    
 
 diameter = 0.1 # [m]
 pipe_length = 100.0 # [m]
@@ -130,7 +130,7 @@ for i, final_time in enumerate(time_intervals):
     axarr[2].plot(xx, αα*UU, '-', linewidth=2)
     axarr[3].plot(xx, PP, 'r-', linewidth=2)
     plt.xlim(0, pipe_length)
-    axarr[0].set_ylim(0, 2)
+    axarr[0].set_ylim(0, 1)
     plt.draw()
     plt.pause(0.0001)
     

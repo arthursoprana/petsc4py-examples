@@ -5,7 +5,11 @@ from physics1 import calculate_residualαUSP
 from physics3 import calculate_residualαUSPsimple
 from physics4 import calculate_residualαUPsimple
 from models import density_model, computeGeometricProperties
-from physics5 import calculate_residual_mass, calculate_residual_mom
+from physics5 import calculate_residual_mass, calculate_residual_mom,\
+    update_velocities, calculate_jacobian_mass
+import scipy as sp
+from scipy import sparse
+from scipy.sparse import linalg
 
 calculate_residual = calculate_residualαUPsimple
 
@@ -41,16 +45,25 @@ class Solver(object):
         self.F = dmda_mass.createGlobalVec()
         self.X = dmda_mass.createGlobalVec()
         self.Xold = dmda_mass.createGlobalVec()
+        self.J = dmda_mass.createMatrix()
   
         self.Fmom = dmda_mom.createGlobalVec()
         self.Xmom = dmda_mom.createGlobalVec()
         self.Xmomold = dmda_mom.createGlobalVec()
-                  
+        
+#         options = PETSc.Options()
+#         options.setValue('-mat_fd_coloring_err', 1e-5)
+#         options.setValue('-mat_fd_coloring_umin', 1e-0)          
         self.snes.setUpdate(self.update_function)
         self.snes.setFunction(self.form_function, self.F)
+#         self.snes.setJacobian(self.form_jacobian, self.J)
         self.snes.setUseFD() # Enables coloring, same as -snes_fd_color
         self.snes.setFromOptions()
         
+#         options = PETSc.Options()
+#         options.setValue('-mat_fd_coloring_err', 1e-3)
+#         options.setValue('-mat_fd_coloring_umin', 1e-3)
+#         options.setValue('-snes_linesearch_type', 'l2')
         self.snes_mom.setFunction(self.form_function_mom, self.Fmom)
         self.snes_mom.setUseFD() # Enables coloring, same as -snes_fd_color
         self.snes_mom.setFromOptions()
@@ -75,6 +88,8 @@ class Solver(object):
         α = u[:, self.nphases:-1]
         P = u[:, -1]
         
+        self.Pprev = P.copy()
+        
         initial_solution_mass = np.hstack((α, P[:, np.newaxis]))
         self.X[...] = initial_solution_mass.flatten()
         self.Xold[...] = self.X[...].copy()
@@ -84,6 +99,8 @@ class Solver(object):
         
         self.U = U
         self.Uold = U.copy()
+        
+        self.Ap_u = np.zeros_like(U)
         
     def set_duration(self, initial_time, final_time):
         self.initial_time = initial_time
@@ -114,41 +131,77 @@ class Solver(object):
 #         options.setValue('-sub_0_snes_linesearch_type', 'basic')
 #         self.snes.setFromOptions()
 #         
-        self.snes_mom.setTolerances(rtol=1e-50, stol=1e-50, atol=1e-5, max_it=10)
+        self.snes_mom.setTolerances(rtol=1e-50, stol=1e-50, atol=1e-6, max_it=3)
         self.snes.setTolerances(rtol=1e-50, stol=1e-50, atol=1e-8, max_it=10)
         
         while self.current_time < self.final_time:
             print('************  \n  \tΔt = %gs\t t = %gs' % (self.Δt, self.current_time))
+            max_breaks = 10
             max_iter = 10
-            for i in range(max_iter):
+
+            for i in range(max_breaks):
                 
-                for j in range(5):
+                for j in range(max_iter):
                     print('Solve mom')
                     self.snes_mom.solve(None, self.Xmom)             
                     print('Solve mass')
+                    
+                    sol = self.X[...]
+                    u = sol.reshape(nx, dof-nphases)
+                    αprev = u[:, :-1].copy()
+                    Pprev = u[:, -1].copy()
                     self.snes.solve(None, self.X)
                     
                     sol = self.X[...]
                     u = sol.reshape(nx, dof-nphases)
                     α = u[:, :-1] # view!
-                    P = u[:, -1]
-#                     α[:, 0] = np.maximum(α[:, 0], 0.0)
-#                     α[:, 1] = np.maximum(α[:, 1], 0.0)
-#                     α[:, 0] = np.minimum(α[:, 0], 1.0)    
-#                     α[:, 1] = np.minimum(α[:, 1], 1.0)    
-                    αG = α[:, 0]                 
-                    αL = α[:, 1]                 
+                    P = u[:, -1]                    
+
+                    Δα = α - αprev
+                    ΔP = P - Pprev
+                    
+                    αG = α[:, 0].copy()                 
+                    αL = α[:, 1].copy()                 
                     α[:, 0] = αG / (αG + αL)
                     α[:, 1] = αL / (αG + αL)
                     
-                    #for phase in range(nphases):            
-                    #    self.ρref[:, phase] = density_model[phase](P*1e5)
-                        
+                    L   = self.L
+                    dx = L / (nx - 1)
+                    dt = self.Δt
+                    uold = self.Xold.getArray()     
+                    uold = uold.reshape(nx, dof-nphases)        
+                    αold = uold[:, :-1]
+                    Pold = uold[:,  -1]
+                    
+                    uold = self.Xmomold.getArray()     
+                    uold = uold.reshape(nx, nphases)        
+                    Uold = uold.copy()        
+        
+                    u    = self.Xmom.getArray()                  
+                    U = u.reshape(nx, nphases) # view!
+        
+                    update_velocities(ΔP, Δα, dt, U, Uold, α, αold, P, Pold, dx, nx, dof, self.Mpresc, self.Ppresc, self.ρref, self.D, Ap_uT=self.Ap_u)
+
+                    
+                    normΔP = np.linalg.norm(ΔP)
+                    print(' \t\t %i ->>>>>ΔP norm is %g' % (j, normΔP))
+                    if normΔP < 1e-6:
+                        break
+                    
+                    if np.any(α < 0.0) or np.any(α > 1.0):
+                        break
+#                     if self.snes.diverged:
+#                         α[:] = αprev.copy()
+#                         P[:] = Pprev.copy()       
+                    
+#                 if self.snes.converged and self.snes_mom.converged:
                 if self.snes.converged:
                     break
-#                 else:
-#                     self.X = self.Xold.copy()
-#                     self.Δt = 0.5*self.Δt
+                else:
+                    print('\t\t ******* BREAKING TIMESTEP %i *******' % i)
+                    self.X = self.Xold.copy()
+                    self.Xmom = self.Xmomold.copy()
+                    self.Δt = 0.5*self.Δt
                     
             self.Xold = self.X.copy()
             self.Xmomold = self.Xmom.copy()
@@ -173,8 +226,8 @@ class Solver(object):
 #         α[:, 0] = np.maximum(α[:, 0], 0.0)
 #         α[:, 1] = np.minimum(α[:, 1], 1.0)
 #         
-#         αG = α[:, 0]                 
-#         αL = α[:, 1]                 
+#         αG = α[:, 0].copy()                 
+#         αL = α[:, 1].copy()                 
 #         α[:, 0] = αG / (αG + αL)
 #         α[:, 1] = αL / (αG + αL)
         
@@ -187,12 +240,30 @@ class Solver(object):
         # Compute geometric properties
         self.Dh, self.Sw, self.Si, self.H = computeGeometricProperties(α, self.D)
         
+#         uold = self.Xold.getArray()     
+#         uold = uold.reshape(nx, dof-nphases)        
+#         αold = uold[:, :-1]
+#         Pold = uold[:,  -1]
+                    
         # Correct velocities
+#         L   = self.L
+#         dx = L / (nx - 1)
+#         dt = self.Δt
+#         uold = self.Xmomold.getArray()     
+#         uold = uold.reshape(nx, nphases)        
+#         Uold = uold.copy()
+#         u    = self.Xmom.getArray()                  
+#         U = u.reshape(nx, nphases) # view!
 
+#         ΔP = P - self.Pprev
+#         update_velocities(ΔP, None, dt, U, Uold, α, αold, P, Pold, dx, nx, dof, self.Mpresc, self.Ppresc, self.ρref, self.D)
 
+        self.Pprev = P.copy()
         
+    def form_function(self, snes, X, F):      
         
-    def form_function(self, snes, X, F):       
+        F[...] = 0.0 # For safety
+
         L   = self.L
         dof = self.dof
         nx  = self.nx
@@ -215,15 +286,60 @@ class Solver(object):
         u    = self.Xmom.getArray()       
         uold = uold.reshape(nx, nphases)        
         Uold = uold.copy()              
-        U = u.reshape(nx, nphases)  
+        U = u.reshape(nx, nphases) # view!
         
         dx = L / (nx - 1)
-
+        
+        Pprev = self.Pprev
         residual = calculate_residual_mass(dt, U, Uold, α, αold, P, Pold, dx, nx, dof, self.Mpresc, self.Ppresc, 
-                                      self.ρref, self.D, self.Dh, self.Sw, self.Si, None, None)
+                                      self.ρref, self.D, self.Dh, self.Sw, self.Si, None, None, Pprev, self.Ap_u)
         F.setArray(residual.flatten())
-                      
+
+    def form_jacobian(self, snes, X, J, P): 
+        
+        J.zeroEntries()
+        
+        L   = self.L
+        dof = self.dof
+        nx  = self.nx
+        nphases = self.nphases
+        dt = self.Δt
+
+        uold = self.Xold.getArray()
+        u    = X.getArray(readonly=True)        
+        uold = uold.reshape(nx, dof-nphases)        
+        αold = uold[:, :-1]
+        Pold = uold[:,  -1]
+        
+        u = u.reshape(nx, dof-nphases)
+        
+        α = u[:, :-1]
+        P = u[:,  -1]
+
+        # getting from mom
+        uold = self.Xmomold.getArray()
+        u    = self.Xmom.getArray()       
+        uold = uold.reshape(nx, nphases)        
+        Uold = uold.copy()              
+        U = u.reshape(nx, nphases) # view!
+        
+        dx = L / (nx - 1)
+        
+        Pprev = self.Pprev
+        row, col, data = calculate_jacobian_mass(dt, U, Uold, α, αold, P, Pold, dx, nx, dof, self.Mpresc, self.Ppresc, 
+                                      self.ρref, self.D, self.Dh, self.Sw, self.Si, None, None, Pprev, self.Ap_u)
+
+
+        size = (dof-nphases)*nx
+        jac = sparse.coo_matrix((data, (row, col)), shape=(size, size))
+        jac_csr = jac.tocsr()
+        J.setValuesCSR(I=jac_csr.indptr, J=jac_csr.indices, V=jac_csr.data)     
+        J.assemblyBegin()
+        J.assemblyEnd()
+        
     def form_function_mom(self, snes, X, F):       
+        F[...] = 0.0 # For safety
+        
         L   = self.L
         dof = self.dof
         nx  = self.nx
@@ -252,7 +368,7 @@ class Solver(object):
         P = u[:,  -1]
         
         residual = calculate_residual_mom(dt, U, Uold, α, αold, P, Pold, dx, nx, dof, self.Mpresc, self.Ppresc, 
-                                      self.ρref, self.D, self.Dh, self.Sw, self.Si, None, None)
+                                      self.ρref, self.D, self.Dh, self.Sw, self.Si, None, None, self.Ap_u)
         F.setArray(residual.flatten())   
                         
 def transient_pipe_flow_1D(

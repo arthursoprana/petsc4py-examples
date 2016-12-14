@@ -164,7 +164,7 @@ def calculate_residualαUPsimple(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, 
             + 0.5 * fw[-1] * ρf[-1] * np.abs( U[-1]) * (Swf[-1] / A) * ΔV * 0.5 \
             + 0.5 * fi[-1] * ρg[-1] * np.abs(Ur[-1]) * (Sif[-1] / A) * ΔV * 0.5
         
-        UU[0] = U[0]
+        UU[0] = Mpresc[phase] / (αf[0] * ρf[0] * A)
         UU[1:-1] = \
                    + ρf[1:-1] * αf[1:-1] * (U[1:-1] - dtU[1:-1]) * ΔV / Ap_u[1:-1] \
                    - αf[1:-1] * (P[1:-1] - P[:-2]) * 1e5 * A / Ap_u[1:-1] \

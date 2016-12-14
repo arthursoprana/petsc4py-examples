@@ -6,7 +6,7 @@ from physics3 import calculate_residualαUSPsimple
 from physics4 import calculate_residualαUPsimple
 from models import density_model, computeGeometricProperties
 
-calculate_residual = calculate_residualαUPsimple
+calculate_residual = calculate_residualαUP
 
 
 class Solver(object):
@@ -115,8 +115,8 @@ class Solver(object):
                 αfTotal = 0.5 * (αTotal[:-1] + αTotal[1:])               
                 αfTotal = np.concatenate(([αfTotal[0]], αfTotal))
         
-#                 α[:, 0] = αG / αTotal
-#                 α[:, 1] = αL / αTotal
+                α[:, 0] = αG / αTotal
+                α[:, 1] = αL / αTotal
 #                 U[:, 0] *= αfTotal
 #                 U[:, 1] *= αfTotal
 #                 α[:, 0] = np.maximum(α[:, 0], 0.0)
