@@ -56,8 +56,8 @@ class Solver(object):
 #         options.setValue('-mat_fd_coloring_umin', 1e-0)          
         self.snes.setUpdate(self.update_function)
         self.snes.setFunction(self.form_function, self.F)
-#         self.snes.setJacobian(self.form_jacobian, self.J)
-        self.snes.setUseFD() # Enables coloring, same as -snes_fd_color
+        self.snes.setJacobian(self.form_jacobian, self.J)
+#         self.snes.setUseFD() # Enables coloring, same as -snes_fd_color
         self.snes.setFromOptions()
         
 #         options = PETSc.Options()
@@ -180,7 +180,7 @@ class Solver(object):
                     u    = self.Xmom.getArray()                  
                     U = u.reshape(nx, nphases) # view!
         
-                    update_velocities(ΔP, Δα, dt, U, Uold, α, αold, P, Pold, dx, nx, dof, self.Mpresc, self.Ppresc, self.ρref, self.D, Ap_uT=self.Ap_u)
+                    #update_velocities(ΔP, Δα, dt, U, Uold, α, αold, P, Pold, dx, nx, dof, self.Mpresc, self.Ppresc, self.ρref, self.D, Ap_uT=self.Ap_u)
 
                     
                     normΔP = np.linalg.norm(ΔP)
@@ -222,15 +222,17 @@ class Solver(object):
         #U = u[:, 0:nphases]
         α = u[:, :-1] # view!
         P = u[:, -1]
-        
 #         α[:, 0] = np.maximum(α[:, 0], 0.0)
 #         α[:, 1] = np.minimum(α[:, 1], 1.0)
 #         
-#         αG = α[:, 0].copy()                 
-#         αL = α[:, 1].copy()                 
-#         α[:, 0] = αG / (αG + αL)
-#         α[:, 1] = αL / (αG + αL)
+        αG = α[:, 0].copy()                 
+        αL = α[:, 1].copy()                 
+        α[:, 0] = αG / (αG + αL)
+        α[:, 1] = αL / (αG + αL)
         
+#         print(α)
+#         print(α.sum(axis=1))
+#         print(P)
         # Compute ref density
         uold = self.Xold[...].reshape(nx, dof-nphases)  
         Pold = uold[:, -1]
@@ -240,25 +242,24 @@ class Solver(object):
         # Compute geometric properties
         self.Dh, self.Sw, self.Si, self.H = computeGeometricProperties(α, self.D)
         
-#         uold = self.Xold.getArray()     
-#         uold = uold.reshape(nx, dof-nphases)        
-#         αold = uold[:, :-1]
-#         Pold = uold[:,  -1]
+        uold = self.Xold.getArray()     
+        uold = uold.reshape(nx, dof-nphases)        
+        αold = uold[:, :-1]
+        Pold = uold[:,  -1]
                     
         # Correct velocities
-#         L   = self.L
-#         dx = L / (nx - 1)
-#         dt = self.Δt
-#         uold = self.Xmomold.getArray()     
-#         uold = uold.reshape(nx, nphases)        
-#         Uold = uold.copy()
-#         u    = self.Xmom.getArray()                  
-#         U = u.reshape(nx, nphases) # view!
+        L   = self.L
+        dx = L / (nx - 1)
+        dt = self.Δt
+        uold = self.Xmomold.getArray()     
+        uold = uold.reshape(nx, nphases)        
+        Uold = uold.copy()
+        u    = self.Xmom.getArray()                  
+        U = u.reshape(nx, nphases) # view!
+        ΔP = P - self.Pprev
+        #update_velocities(ΔP, None, dt, U, Uold, α, αold, P, Pold, dx, nx, dof, self.Mpresc, self.Ppresc, self.ρref, self.D)
 
-#         ΔP = P - self.Pprev
-#         update_velocities(ΔP, None, dt, U, Uold, α, αold, P, Pold, dx, nx, dof, self.Mpresc, self.Ppresc, self.ρref, self.D)
-
-        self.Pprev = P.copy()
+        #self.Pprev = P.copy()
         
     def form_function(self, snes, X, F):      
         
@@ -280,7 +281,9 @@ class Solver(object):
         
         α = u[:, :-1]
         P = u[:,  -1]
-
+        
+        #self.Pprev = P.copy()
+        
         # getting from mom
         uold = self.Xmomold.getArray()
         u    = self.Xmom.getArray()       
@@ -291,6 +294,14 @@ class Solver(object):
         dx = L / (nx - 1)
         
         Pprev = self.Pprev
+        
+        if not self.snes.use_fd:
+            Δu = self.snes.getSolutionUpdate()[...]
+            Δu = Δu.reshape(nx, dof-nphases)            
+            Δα = Δu[:, :-1]
+            ΔP = Δu[:,  -1]        
+            update_velocities(ΔP, None, dt, U, Uold, α, αold, P, Pold, dx, nx, dof, self.Mpresc, self.Ppresc, self.ρref, self.D, Ap_uT=self.Ap_u)
+
         residual = calculate_residual_mass(dt, U, Uold, α, αold, P, Pold, dx, nx, dof, self.Mpresc, self.Ppresc, 
                                       self.ρref, self.D, self.Dh, self.Sw, self.Si, None, None, Pprev, self.Ap_u)
         F.setArray(residual.flatten())
@@ -326,6 +337,12 @@ class Solver(object):
         dx = L / (nx - 1)
         
         Pprev = self.Pprev
+        
+        if not self.snes.use_fd:
+            ΔP = P - Pprev
+            #update_velocities(ΔP, None, dt, U, Uold, α, αold, P, Pold, dx, nx, dof, self.Mpresc, self.Ppresc, self.ρref, self.D, Ap_uT=self.Ap_u)
+
+
         row, col, data = calculate_jacobian_mass(dt, U, Uold, α, αold, P, Pold, dx, nx, dof, self.Mpresc, self.Ppresc, 
                                       self.ρref, self.D, self.Dh, self.Sw, self.Si, None, None, Pprev, self.Ap_u)
 

@@ -157,28 +157,28 @@ def calculate_jacobian_mass(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof,
         else:
             Ap_u = Ap_uT[:, phase]
 
-        ΔP = P - Pprev
-        ΔU[1:-1] = - αf[1:-1] * (ΔP[1:-1] - ΔP[:-2]) * 1e5 * A / Ap_u[1:-1]
-        ΔU[-1] =   - αf[-1] * (- ΔP[-2]) * 1e5 * A / Ap_u[-1] 
-        Ú = U + ΔU
-           
-#         Û[0] = U[0]
-        Û[0] = Mpresc[phase] / (αf[0] * ρf[0] * A)
-        Û[1:-1] = \
-                   - αf[1:-1] * (P[1:-1] - P[:-2]) * 1e5 * A / Ap_u[1:-1] \
-                   - αf[1:-1] * ρf[1:-1] * g * np.cos(θ) * A * (H[1:-1] - H[:-2]) / Ap_u[1:-1] \
-                   - α[1:-1] * ρ[1:-1] * Uc[1:  ] * A * ((β[1:  ] - 0.5) * U[2:  ]) / Ap_u[1:-1] \
-                   + α[ :-2] * ρ[ :-2] * Uc[ :-1] * A * ((β[ :-1] + 0.5) * U[ :-2]) / Ap_u[1:-1] \
-                   + ρfold[1:-1] * αfold[1:-1] * Uold[1:-1] * ΔV/dt / Ap_u[1:-1] \
-                   + 0.5 * fi[1:-1] * ρGf[1:-1] * np.abs(Ur[1:-1]) * Uother[phase][1:-1] * (Sif[1:-1] / A) * ΔV / Ap_u[1:-1]
-                   
-        Û[-1] = \
-                   - αf[-1] * (Ppresc  - P[ -2]) * 1e5 * A / Ap_u[  -1] \
-                   - αf[-1] * ρf[-1] * g * np.cos(θ) * A * (H[-1] - H[-2]) / Ap_u[  -1] \
-                   - α[-2] * ρ[-2] * U[-1] * A * U[-1] / Ap_u[  -1]  \
-                   + α[-2] * ρ[-2] * Uc[-1] * A * ((β[-1] + 0.5) * U[-2]) / Ap_u[  -1] \
-                   + ρfold[-1] * αfold[-1] * Uold[-1] * ΔV/dt * 0.5 / Ap_u[  -1] \
-                   + 0.5 * fi[-1] * ρGf[-1] * np.abs(Ur[-1]) * Uother[phase][-1] * (Sif[-1] / A) * ΔV / Ap_u[  -1]
+#         ΔP = P - Pprev
+#         ΔU[1:-1] = - αf[1:-1] * (ΔP[1:-1] - ΔP[:-2]) * 1e5 * A / Ap_u[1:-1]
+#         ΔU[-1] =   - αf[-1] * (- ΔP[-2]) * 1e5 * A / Ap_u[-1] 
+#         Ú = U + ΔU
+#            
+# #         Û[0] = U[0]
+#         Û[0] = Mpresc[phase] / (αf[0] * ρf[0] * A)
+#         Û[1:-1] = \
+#                    - αf[1:-1] * (P[1:-1] - P[:-2]) * 1e5 * A / Ap_u[1:-1] \
+#                    - αf[1:-1] * ρf[1:-1] * g * np.cos(θ) * A * (H[1:-1] - H[:-2]) / Ap_u[1:-1] \
+#                    - α[1:-1] * ρ[1:-1] * Uc[1:  ] * A * ((β[1:  ] - 0.5) * U[2:  ]) / Ap_u[1:-1] \
+#                    + α[ :-2] * ρ[ :-2] * Uc[ :-1] * A * ((β[ :-1] + 0.5) * U[ :-2]) / Ap_u[1:-1] \
+#                    + ρfold[1:-1] * αfold[1:-1] * Uold[1:-1] * ΔV/dt / Ap_u[1:-1] \
+#                    + 0.5 * fi[1:-1] * ρGf[1:-1] * np.abs(Ur[1:-1]) * Uother[phase][1:-1] * (Sif[1:-1] / A) * ΔV / Ap_u[1:-1]
+#                    
+#         Û[-1] = \
+#                    - αf[-1] * (Ppresc  - P[ -2]) * 1e5 * A / Ap_u[  -1] \
+#                    - αf[-1] * ρf[-1] * g * np.cos(θ) * A * (H[-1] - H[-2]) / Ap_u[  -1] \
+#                    - α[-2] * ρ[-2] * U[-1] * A * U[-1] / Ap_u[  -1]  \
+#                    + α[-2] * ρ[-2] * Uc[-1] * A * ((β[-1] + 0.5) * U[-2]) / Ap_u[  -1] \
+#                    + ρfold[-1] * αfold[-1] * Uold[-1] * ΔV/dt * 0.5 / Ap_u[  -1] \
+#                    + 0.5 * fi[-1] * ρGf[-1] * np.abs(Ur[-1]) * Uother[phase][-1] * (Sif[-1] / A) * ΔV / Ap_u[  -1]
                    
 #         Û = Ú
 #         ϕ = 0.9
@@ -211,15 +211,23 @@ def calculate_jacobian_mass(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof,
 
         ############################
         ##### DERIVATIVES W.R.T U    
+        #- αf[1:-1] * (P[1:-1] - P[:-2]) * 1e5 * A / Ap_u[1:-1]
         # e Û[1:  ] 
-        dRdUe = + ((β[1:  ] - 0.5) * ρ[1:  ] * α[1:  ] + (β[1:  ] + 0.5) *  ρ[ :-1]  * α[ :-1]) * A        
-        dUedPE = - αf[1:] * (+1) * 1e5 * A / Ap_u[1:]
-        dUedPP = - αf[1:] * (-1) * 1e5 * A / Ap_u[1:]
+        dRdUe = np.zeros(nx)
+        dRdUw = np.zeros(nx)
+        dUdPw = np.zeros(nx)
+        dUdPe = np.zeros(nx)
+
+        
+        # Last mass V.C. is ghost
+        dRdUe[:-1] = + ((β[1:  ] - 0.5) * ρ[1:  ] * α[1:  ] + (β[1:  ] + 0.5) *  ρ[ :-1]  * α[ :-1]) * A        
         
         # w Û[1:  ] 
-        dRdUw = - ((β[ :-1] - 0.5) * ρ[ :-1] * α[ :-1] + (β[ :-1] + 0.5) * ρρ[ :-2] * αα[ :-2]) * A
-        dUwdPP = - αf[1:] * (+1) * 1e5 * A / Ap_u[1:]
-        dUwdPW = - αf[1:] * (-1) * 1e5 * A / Ap_u[1:]
+        dRdUw[:-1] = - ((β[ :-1] - 0.5) * ρ[ :-1] * α[ :-1] + (β[ :-1] + 0.5) * ρρ[ :-2] * αα[ :-2]) * A
+
+
+        dUdPw[1:] = - αf[1:] * (-1) * 1e5 * A / Ap_u[1:]
+        dUdPe[1:] = - αf[1:] * (+1) * 1e5 * A / Ap_u[1:]
         
         ############################
         ##### DERIVATIVES W.R.T P    
@@ -229,13 +237,23 @@ def calculate_jacobian_mass(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof,
             - ((β[ :-1] - 0.5) * α[ :-1]) * U[ :-1] * A
             
         dRdρE = + ((β[1:  ] - 0.5) *  α[1:  ]) * U[1:  ] * A 
-        dRdρW = - ((β[ :-1] + 0.5) * αα[ :-2]) * U[ :-1] * A
+        dRdρW = - ((β[ :-1] + 0.5) * αα[ :-2]) * U[ :-1] * A      
         
         dρdP = c[:-1] * 1e5 # like this for now
         
-        dRdPP = (dRdρP*dρdP + dRdUe*dUedPP + dRdUw*dUwdPP) #/ ρref[:-1]
-        dRdPE = (dRdρE*dρdP + dRdUe*dUedPE) #/ ρref[:-1]
-        dRdPW = (dRdρW*dρdP + dRdUw*dUwdPW) #/ ρref[:-1]
+
+        # dUedPw -> PP
+        # dUwdPe -> PP        
+        dRdPP = dRdρP*dρdP + dRdUe[:-1]*dUdPw[1:] + dRdUw[:-1]*dUdPe[:-1]
+        
+        # dUedPe -> PE
+        dRdPE = dRdρE*dρdP + dRdUe[:-1]*dUdPe[:-1]
+        # dUwdPw -> PW
+        dRdPW = dRdρW*dρdP + dRdUw[:-1]*dUdPw[1:]
+        
+        dRdPP /= ρref[:-1]
+        dRdPE /= ρref[:-1]
+        dRdPW /= ρref[:-1]
  
         row  = np.concatenate((row , idxP[:-1])).astype(int)
         col  = np.concatenate((col , idxP[:-1])).astype(int)
@@ -243,23 +261,45 @@ def calculate_jacobian_mass(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof,
         
         row  = np.concatenate((row , idxP[:-2])).astype(int)
         col  = np.concatenate((col , idxP[:-2] + bsize)).astype(int)
-        data = np.concatenate((data, dRdPE[:-1]))
+        data = np.concatenate((data, dRdPE[1:]))
         
         row  = np.concatenate((row , idxP[1:-1])).astype(int)
         col  = np.concatenate((col , idxP[1:-1] - bsize)).astype(int)
-        data = np.concatenate((data, dRdPW[1:]))
+        data = np.concatenate((data, dRdPW[:-1]))
         
+        ##################################
+        # Volume Fraction Derivatives - α
+        ##################################
         row  = np.concatenate((row , idxα[:-1])).astype(int)
         col  = np.concatenate((col , idxα[:-1])).astype(int)
         data = np.concatenate((data, dRdαP))
         
         row  = np.concatenate((row , idxα[:-2])).astype(int)
         col  = np.concatenate((col , idxα[:-2] + bsize)).astype(int)
-        data = np.concatenate((data, dRdαE[:-1]))
+#         data = np.concatenate((data, dRdαE[:-1]))
+        data = np.concatenate((data, dRdαE[1:]))
         
         row  = np.concatenate((row , idxα[1:-1])).astype(int)
         col  = np.concatenate((col , idxα[1:-1] - bsize)).astype(int)
-        data = np.concatenate((data, dRdαW[1:]))
+#         data = np.concatenate((data, dRdαW[1:]))
+        data = np.concatenate((data, dRdαW[:-1]))
+        
+#         # For pressure eq. -> It does not work! :/
+#         dRPdαP = dRdαP / ρref[:-1]
+#         dRPdαE = dRdαE / ρref[:-1]
+#         dRPdαW = dRdαW / ρref[:-1]
+#         
+#         row  = np.concatenate((row , idxP[:-1])).astype(int)
+#         col  = np.concatenate((col , idxα[:-1])).astype(int)
+#         data = np.concatenate((data, dRPdαP))
+#         
+#         row  = np.concatenate((row , idxP[:-2])).astype(int)
+#         col  = np.concatenate((col , idxα[:-2] + bsize)).astype(int)
+#         data = np.concatenate((data, dRPdαE[:-1]))
+#         
+#         row  = np.concatenate((row , idxP[1:-1])).astype(int)
+#         col  = np.concatenate((col , idxα[1:-1] - bsize)).astype(int)
+#         data = np.concatenate((data, dRPdαW[1:]))
 
         
         # Mass        
@@ -285,10 +325,7 @@ def calculate_jacobian_mass(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof,
 
 def calculate_residual_mass(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof, 
                             Mpresc, Ppresc, ρrefT, D, DhT=None, SwT=None, Si=None, H=None, fi=None, Pprev=None, Ap_uT=None):
-    
-    ΔP = P - Pprev
-    update_velocities(ΔP, None, dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof, Mpresc, Ppresc, ρrefT, D, Ap_uT=Ap_uT)
-        
+           
     nphases = αT.shape[1] 
     f = np.zeros((nx, dof-nphases))    
     
@@ -423,10 +460,10 @@ def calculate_residual_mass(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof,
         else:
             Ap_u = Ap_uT[:, phase]
 
-        ΔP = P - Pprev
-        ΔU[1:-1] = - αf[1:-1] * (ΔP[1:-1] - ΔP[:-2]) * 1e5 * A / Ap_u[1:-1]
-        ΔU[-1] =   - αf[-1] * (- ΔP[-2]) * 1e5 * A / Ap_u[-1] 
-        Ú = U + ΔU
+#         ΔP = P - Pprev
+#         ΔU[1:-1] = - αf[1:-1] * (ΔP[1:-1] - ΔP[:-2]) * 1e5 * A / Ap_u[1:-1]
+#         ΔU[-1] =   - αf[-1] * (- ΔP[-2]) * 1e5 * A / Ap_u[-1] 
+#         Ú = U + ΔU
            
 #         Û[0] = U[0]
         Û[0] = Mpresc[phase] / (αf[0] * ρf[0] * A)
@@ -437,7 +474,7 @@ def calculate_residual_mass(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof,
                    + α[ :-2] * ρ[ :-2] * Uc[ :-1] * A * ((β[ :-1] + 0.5) * U[ :-2]) / Ap_u[1:-1] \
                    + ρfold[1:-1] * αfold[1:-1] * Uold[1:-1] * ΔV/dt / Ap_u[1:-1] \
                    + 0.5 * fi[1:-1] * ρGf[1:-1] * np.abs(Ur[1:-1]) * Uother[phase][1:-1] * (Sif[1:-1] / A) * ΔV / Ap_u[1:-1]
-                   
+                    
         Û[-1] = \
                    - αf[-1] * (Ppresc  - P[ -2]) * 1e5 * A / Ap_u[  -1] \
                    - αf[-1] * ρf[-1] * g * np.cos(θ) * A * (H[-1] - H[-2]) / Ap_u[  -1] \
@@ -446,7 +483,7 @@ def calculate_residual_mass(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof,
                    + ρfold[-1] * αfold[-1] * Uold[-1] * ΔV/dt * 0.5 / Ap_u[  -1] \
                    + 0.5 * fi[-1] * ρGf[-1] * np.abs(Ur[-1]) * Uother[phase][-1] * (Sif[-1] / A) * ΔV / Ap_u[  -1]
                    
-        #Û = U
+        Û = U
 #         ϕ = 0.9
 #         Û = ϕ * Û + (1 - ϕ) * Ú
 
@@ -463,7 +500,7 @@ def calculate_residual_mass(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof,
             
 #         f[:-1, -1] += fP / ρref[:-1] - α[:-1]
 #         f[:-1, -1] += fP #/ ρref[:-1] #- α[:-1]
-        f[:-1, -1] += fP #/ ρref[:-1]
+        f[:-1, -1] += fP / ρref[:-1]
         
         ######################################
         ######################################
@@ -474,10 +511,9 @@ def calculate_residual_mass(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof,
         f[:-1, phase] +=  \
             + (ρ[:-1] * α[:-1] - ρold[:-1] * αold[:-1]) * ΔV/dt \
             + ((β[1:  ] - 0.5) * ρ[1:  ] * α[1:  ] + (β[1:  ] + 0.5) *  ρ[ :-1]  * α[ :-1]) * Û[1:  ] * A \
-            - ((β[ :-1] - 0.5) * ρ[ :-1] * α[ :-1] + (β[ :-1] + 0.5) * ρρ[ :-2] * αα[ :-2]) * Û[ :-1] * A \
-        
+            - ((β[ :-1] - 0.5) * ρ[ :-1] * α[ :-1] + (β[ :-1] + 0.5) * ρρ[ :-2] * αα[ :-2]) * Û[ :-1] * A
+            
         ######################################
-
         
         # Mass        
         αpresc = 0.5
@@ -492,7 +528,10 @@ def calculate_residual_mass(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof,
     f[ -1, -1] = -(Ppresc - P[-1])
     
 #     f[:-1, -1] = 1 - αTotal[:-1]
-    
+    αGnorm = np.linalg.norm(f[:, 0]) 
+    αLnorm = np.linalg.norm(f[:, 1]) 
+    Pnorm  = np.linalg.norm(f[:, 2]) 
+    print('\t\t Norm αG, αL, P: %g\t %g\t %g' % (αGnorm, αLnorm, Pnorm))
     return f
 
 
@@ -646,8 +685,8 @@ def update_velocities(ΔP, Δα, dt, UT, UTold, αT, αTold, P, Pold, dx, nx, do
     nphases = αT.shape[1] 
     f = np.zeros((nx, dof-nphases))    
     
-    αG = αT[:, 0]                 
-    αL = αT[:, 1]  
+    αG = αT[:, 0].copy()                
+    αL = αT[:, 1].copy()  
     αTotal = αG + αL
        
     αT = np.zeros((nx, nphases))
