@@ -96,8 +96,16 @@ class Solver(object):
             sol = self.snes.getSolution()[...]
             if len(sol) > 0:
                 u = sol.reshape(nx, dof)  
-                α = u[:, nphases:-1]       
+                U = u[:, 0:nphases]
+                α = u[:, nphases:-1]   
+                αG = α[:, 0]
+                αL = α[:, 1]
+                UG = U[:, 0]
+                UL = U[:, 1]  
+                idx = UG.argmax()
+                idx1 = αG.argmin()
                 print('************  \n  \tΔt = %gs\t t = %gs and max α is %g' % (self.Δt, self.current_time, α.max()))
+#                 print(idx, αG[idx-10:idx+1], self.H[idx-10:idx+1], UG.max(), UG[idx-1], UG[idx-4])
             else:
                 print('************  \n  \tΔt = %gs\t t = %gs' % (self.Δt, self.current_time))
             max_iter = 10
@@ -117,10 +125,14 @@ class Solver(object):
         
                 α[:, 0] = αG / αTotal
                 α[:, 1] = αL / αTotal
-#                 U[:, 0] *= αfTotal
-#                 U[:, 1] *= αfTotal
+                U[:, 0] *= αfTotal
+                U[:, 1] *= αfTotal
+#                 α[:, 0] = np.minimum(α[:, 0], 1.0)
 #                 α[:, 0] = np.maximum(α[:, 0], 0.0)
-#                 α[:, 1] = np.minimum(α[:, 1], 0.99999999)
+#                 α[:, 1] = np.minimum(α[:, 1], 1.0)
+#                 α[:, 1] = np.maximum(α[:, 1], 0.0)
+#                 
+#                 U[:, 0] = np.where(α[:, 0] == 0.0, U[:, 1], U[:, 0])
 #                 α[:, 1] = α[:, 1] / (α[:, 0] + α[:, 1])
 
 

@@ -55,7 +55,7 @@ options.setValue('-snes_linesearch_type', 'basic')
 time_intervals = np.linspace(0.1, 200, num=2500) # [s]
 # time_intervals = [20.0]
 dt = 0.001     # [s]
-dt_min = 0.001 # [s]
+dt_min = 0.000001 # [s]
 dt_max = 0.02  # [s]
 
 
@@ -130,7 +130,7 @@ for i, final_time in enumerate(time_intervals):
     axarr[2].plot(xx, αα*UU, '-', linewidth=2)
     axarr[3].plot(xx, PP, 'r-', linewidth=2)
     plt.xlim(0, pipe_length)
-    axarr[0].set_ylim(0, 1)
+    axarr[0].set_ylim(0, 2)
     plt.draw()
     plt.pause(0.0001)
     

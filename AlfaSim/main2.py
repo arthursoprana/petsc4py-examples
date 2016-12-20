@@ -81,7 +81,7 @@ initial_solution[:,0:nphases] = 1e-8 # Velocity
 # αG[300:310] = 0.001
 initial_solution[:,2] = αG # vol frac
 initial_solution[:,3] = 1-αG # vol frac
-initial_solution[:,-1] = 1.0  # Pressure
+initial_solution[:,-1] = np.linspace(1.0,1.0,num=nx)  # Pressure
 initial_time = 0.0
 
 f, axarr = plt.subplots(4, sharex=True, figsize=(16, 10))
