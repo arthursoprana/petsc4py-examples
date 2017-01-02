@@ -400,6 +400,7 @@ def calculate_residual_mom(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof, Mpr
         g = GRAVITY_CONSTANT 
            
         β = np.where(Uc > 0.0, 0.5, -0.5)
+
         # center momentum
         f[1:-1, phase] += \
             + (ρf[1:-1] * αf[1:-1] * U[1:-1] - ρfold[1:-1] * αfold[1:-1] * Uold[1:-1]) * ΔV/dt \
@@ -607,6 +608,25 @@ def calculate_jacobian_mom(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof,
     data = np.concatenate((data, dRLdUG))
  
     return row, col, data
+
+def calculate_velocity_update(ΔP, Δα, dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof, Mpresc, Ppresc, ρrefT, D,
+                      DhT=None, SwT=None, Si=None, H=None, fi=None, Ap_uT=None):
+    
+    ΔUT = np.zeros_like(UT)
+    nphases = αT.shape[1]  
+                               
+    A = 0.25 * np.pi * D ** 2 # [m]
+    ΔV = A * dx    
+        
+    for phase in range(nphases):
+        ΔU = ΔUT[:, phase]
+        
+        α = αT[:, phase]
+        αf = 0.5 * (α[:-1] + α[1:])
+        αf = np.concatenate(([αf[0]], αf))
+
+        Ap_u = Ap_uT[:, phase]
+
         ΔU[1:-1] = - αf[1:-1] * (ΔP[1:-1] - ΔP[:-2]) * 1e5 * A / Ap_u[1:-1]
         ΔU[-1]   = - αf[-1] * (- ΔP[ -2]) * 1e5 * A / Ap_u[  -1] 
          
