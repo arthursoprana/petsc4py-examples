@@ -2,7 +2,9 @@ import numpy as np
 from petsc4py import PETSc
 from models import density_model, computeGeometricProperties
 from physics6 import calculate_residual_mass, calculate_residual_mom,\
-    calculate_velocity_update, calculate_coeff_mom, calculate_residual_press
+    calculate_velocity_update, calculate_coeff_mom, calculate_residual_press,\
+    calculate_jacobian_mass, calculate_jacobian_press, calculate_jacobian_mom
+from scipy import sparse
 
 class Solver(object):
     def __init__(self, nx, dof, pipe_length, diameter, nphases, α0, mass_flux_presc, pressure_presc):       
@@ -35,27 +37,33 @@ class Solver(object):
         self.snes_mom.setDM(dmda_mom)
   
         self.Fpress = dmda_press.createGlobalVec()
+        self.Jpress = dmda_press.createMatrix()
         self.XΔpress = dmda_press.createGlobalVec()
         self.Xpress = dmda_press.createGlobalVec()
         self.Xpressold = dmda_press.createGlobalVec()
         
         self.Fmass = dmda_mass.createGlobalVec()
+        self.Jmass = dmda_mass.createMatrix()
         self.Xmass = dmda_mass.createGlobalVec()
         self.Xmassold = dmda_mass.createGlobalVec()
         
         self.Fmom = dmda_mom.createGlobalVec()
+        self.Jmom = dmda_mom.createMatrix()
         self.Xmom = dmda_mom.createGlobalVec()
         self.Xmomold = dmda_mom.createGlobalVec()
 
         self.snes_press.setFunction(self.form_function_press, self.Fpress)
+#         self.snes_press.setJacobian(self.form_jacobian_press, self.Jpress)
         self.snes_press.setUseFD() # Enables coloring, same as -snes_fd_color
         self.snes_press.setFromOptions()
         
         self.snes_mass.setFunction(self.form_function_mass, self.Fmass)
+#         self.snes_mass.setJacobian(self.form_jacobian_mass, self.Jmass)
         self.snes_mass.setUseFD() # Enables coloring, same as -snes_fd_color
         self.snes_mass.setFromOptions()
         
         self.snes_mom.setFunction(self.form_function_mom, self.Fmom)
+#         self.snes_mom.setJacobian(self.form_jacobian_mom, self.Jmom)
         self.snes_mom.setUseFD() # Enables coloring, same as -snes_fd_color
         self.snes_mom.setFromOptions()
         
@@ -229,7 +237,37 @@ class Solver(object):
         residual = calculate_residual_press(dt, U, Uold, α, αold, P + ΔP, Pold, ΔP, dx, nx, dof, self.Mpresc, self.Ppresc, 
                                       self.ρref, self.D, self.Dh, self.Sw, self.Si, None, None, None, self.Ap_u)
         F.setArray(residual.flatten())
-                
+
+
+    def form_jacobian_press(self, snes, X, J, P): 
+        
+        J.zeroEntries()
+        
+        L   = self.L
+        dof = self.dof
+        nx  = self.nx
+        nphases = self.nphases
+        dt = self.Δt
+
+        ΔP = X.getArray(readonly=True)
+        
+        P, Pold = self.get_pressure_array()       
+        α, αold = self.get_vol_frac_array()        
+        U, Uold = self.get_velocity_array()
+
+        dx = L / (nx - 1)
+        
+        row, col, data = calculate_jacobian_press(dt, U, Uold, α, αold, P + ΔP, Pold, dx, nx, dof, self.Mpresc, self.Ppresc, 
+                                      self.ρref, self.D, self.Dh, self.Sw, self.Si, None, None, None, self.Ap_u)
+
+        size = nx
+        jac = sparse.coo_matrix((data, (row, col)), shape=(size, size))
+        jac_csr = jac.tocsr()
+        J.setValuesCSR(I=jac_csr.indptr, J=jac_csr.indices, V=jac_csr.data)     
+        J.assemblyBegin()
+        J.assemblyEnd()
+        
+                        
     def form_function_mass(self, snes, X, F):      
         
         F[...] = 0.0 # For safety
@@ -254,7 +292,36 @@ class Solver(object):
                                       self.ρref, self.D, self.Dh, self.Sw, self.Si, None, None, None, self.Ap_u)
         F.setArray(residual.flatten())
 
+    def form_jacobian_mass(self, snes, X, J, P): 
         
+        J.zeroEntries()
+        
+        L   = self.L
+        dof = self.dof
+        nx  = self.nx
+        nphases = self.nphases
+        dt = self.Δt
+
+        uold = self.Xmassold.getArray()
+        u    = X.getArray(readonly=True)        
+        αold = uold.reshape(nx, nphases)
+        α = u.reshape(nx, nphases)
+        
+        P, Pold = self.get_pressure_array()
+        U, Uold = self.get_velocity_array()
+
+        dx = L / (nx - 1)
+        
+        row, col, data = calculate_jacobian_mass(dt, U, Uold, α, αold, P, Pold, dx, nx, dof, self.Mpresc, self.Ppresc, 
+                                      self.ρref, self.D, self.Dh, self.Sw, self.Si, None, None, None, self.Ap_u)
+
+        size = nphases*nx
+        jac = sparse.coo_matrix((data, (row, col)), shape=(size, size))
+        jac_csr = jac.tocsr()
+        J.setValuesCSR(I=jac_csr.indptr, J=jac_csr.indices, V=jac_csr.data)     
+        J.assemblyBegin()
+        J.assemblyEnd()
+           
     def form_function_mom(self, snes, X, F):       
         F[...] = 0.0 # For safety
         
@@ -281,24 +348,50 @@ class Solver(object):
                                       self.ρref, self.D, self.Dh, self.Sw, self.Si, None, None, self.Ap_u)
         F.setArray(residual.flatten())   
  
-    def calc_coeff_mom(self):
+    def form_jacobian_mom(self, snes, X, J, P): 
+        
+        J.zeroEntries()
+        
         L   = self.L
         dof = self.dof
         nx  = self.nx
         nphases = self.nphases
-        dt = self.Δt                 
-    
+        dt = self.Δt        
+
         uold = self.Xmomold.getArray()
-        u    = self.Xmom.getArray()                  
+        u    = X.getArray(readonly=True)
+     
         uold = uold.reshape(nx, nphases)        
         Uold = uold.copy()        
         u = u.reshape(nx, nphases)        
         U = u.copy()
+
+        dx = L / (nx - 1)        
+        
+        P, Pold = self.get_pressure_array()
+        α, αold = self.get_vol_frac_array()
+        
+        row, col, data = calculate_jacobian_mom(dt, U, Uold, α, αold, P, Pold, dx, nx, dof, self.Mpresc, self.Ppresc, 
+                                      self.ρref, self.D, self.Dh, self.Sw, self.Si, None, None, None, self.Ap_u)
+
+        size = nphases*nx
+        jac = sparse.coo_matrix((data, (row, col)), shape=(size, size))
+        jac_csr = jac.tocsr()
+        J.setValuesCSR(I=jac_csr.indptr, J=jac_csr.indices, V=jac_csr.data)     
+        J.assemblyBegin()
+        J.assemblyEnd()
+        
+    def calc_coeff_mom(self):
+        L   = self.L
+        dof = self.dof
+        nx  = self.nx
+        dt = self.Δt
     
         dx = L / (nx - 1)        
         
         P, Pold = self.get_pressure_array()
         α, αold = self.get_vol_frac_array()  
+        U, Uold = self.get_velocity_array()
         
         calculate_coeff_mom(dt, U, Uold, α, αold, P, Pold, dx, nx, dof, self.Mpresc, self.Ppresc, 
              self.ρref, self.D, self.Dh, self.Sw, self.Si, None, None, self.Ap_u) 
@@ -320,7 +413,7 @@ class Solver(object):
     def correct_pressure(self, ΔP, relax_factor=1.0):    
         P, _ = self.get_pressure_array()
         P[:] += relax_factor*ΔP  
-    
+
     def normalize_vol_frac(self):
         α, _ = self.get_vol_frac_array() 
         
