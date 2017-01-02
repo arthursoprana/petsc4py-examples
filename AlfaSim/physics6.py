@@ -218,9 +218,8 @@ def calculate_residual_mom(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof, Mpr
             + αf[-1] * ρf[-1] * g * np.cos(θ) * A * (H[-1] - H[-2])  \
             + τw[-1] * (Swf[-1] / A) * ΔV * 0.5 + sign_τ[phase] * τi[-1] * (Sif[-1] / A) * ΔV * 0.5
        
-        # boundaries            
-        # Momentum                 
-        f[0,phase] = -(Mpresc[phase] - 1.0 * ρf[0] * U[0] * A) # this number 1.0 is important when α -> 0
+        # boundary momentum                          
+        f[0,phase] = -(Mpresc[phase] - αf[0] * ρf[0] * U[0] * A) # this number 1.0 is important when α -> 0
 
     return f
 
@@ -436,10 +435,10 @@ def calculate_coeff_mom(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof, Mpresc
            
         β = np.where(Uc > 0.0, 0.5, -0.5)
             
-         
+
         Ap_uT[0, phase] = ρf[0] * αf[0] * ΔV/dt * 0.5\
             + α[0] * ρ[0] * Uc[0] * A * ((β[0] + 0.5) ) \
-            - α[0] * ρ[0] * U[0] * A \
+            - Mpresc[phase] \
             + 0.5 * fw[0] * ρf[0] * np.abs( U[0]) * (Swf[0] / A) * ΔV * 0.5\
             + 0.5 * fi[0] * ρGf[0] * np.abs(Ur[0]) * (Sif[0] / A) * ΔV * 0.5
                
