@@ -108,9 +108,7 @@ class Solver(object):
         self.current_time = initial_time
         self.final_time = final_time
         
-    def solve(self): 
-        nphases = self.nphases
-        
+    def solve(self):
 #         self.snes_mom.setType(self.snes_mom.Type.KSPONLY)
 #         self.snes_mass.setType(self.snes_mass.Type.KSPONLY)
 #         self.snes_press.setType(self.snes_press.Type.KSPONLY)
@@ -132,7 +130,8 @@ class Solver(object):
                 residual_press = 1e20
                 residual_mass  = 1e20
                 residual_mom  = 1e20
-                while (residual_mom > tolerance or residual_press > tolerance or residual_mass > tolerance) and outer_iteration < max_iterations:  
+                vol_frac_out_of_range = False
+                while (residual_mom > tolerance or residual_press > tolerance or residual_mass > tolerance) and outer_iteration < max_iterations and not vol_frac_out_of_range:  
                     self.snes_mom.solve(None, self.Xmom)                     
                     self.calc_coeff_mom()
                     
@@ -140,7 +139,7 @@ class Solver(object):
                     residual_mass  = 1e20
                     inner_iteration = 0
                     
-                    while (residual_press > tolerance or residual_mass > tolerance) and inner_iteration < max_iterations:  
+                    while (residual_press > tolerance or residual_mass > tolerance) and inner_iteration < max_iterations and not vol_frac_out_of_range:  
                         self.XΔpress[...] = 0.0 # This seems necessary, why?
                               
                         self.snes_press.solve(None, self.XΔpress)
@@ -157,15 +156,16 @@ class Solver(object):
                         residual_mass  = self.snes_mass.getFunction()[0].norm()                        
                         residual_press = self.snes_press.getFunction()[0].norm()
                         
+                        vol_frac_out_of_range = self.check_vol_frac_out_of_range()
                         inner_iteration += 1
-                    
+                        
                     residual_mom = self.calculate_residual_mom()
                     
                     print('%.4e \t %.4e \t %.4e \t %i  %i' %
                           (residual_mass, residual_press, residual_mom, outer_iteration, inner_iteration))
                     
                     outer_iteration += 1
-                if self.snes_mass.converged and self.snes_press.converged:
+                if self.snes_mass.converged and self.snes_press.converged and not vol_frac_out_of_range:
                     break
                 else:
                     print('\t\t ******* BREAKING TIMESTEP %i *******' % i)
@@ -181,13 +181,14 @@ class Solver(object):
             
             self.current_time += self.Δt
             
-            # Update ρref
-            Pold = self.Xpressold[...]
-            for phase in range(nphases):            
-                self.ρref[:, phase] = density_model[phase](Pold*1e5)
+            self.update_ref_density()
             
             if self.current_time > 0.001:
                 self.Δt = np.maximum(self.min_Δt, np.minimum(self.Δt*1.1, self.max_Δt))
+    
+    def check_vol_frac_out_of_range(self):
+        α, _ = self.get_vol_frac_array()    
+        return np.logical_or(np.any(α < 0), np.any(α > 1))
     
     def get_velocity_array(self, X=None):
         nx  = self.nx
@@ -409,6 +410,14 @@ class Solver(object):
         residual_mom   = self.snes_mom.getFunction()[0].norm() / denominator 
         return residual_mom
                         
+    def update_ref_density(self):
+        nphases = self.nphases       
+            
+        Pold = self.Xpressold[...]
+        for phase in range(nphases):            
+            self.ρref[:, phase] = density_model[phase](Pold*1e5)
+            
+
 def transient_pipe_flow_1D(
     npipes, nx, dof, nphases,
     pipe_length, diameter,
