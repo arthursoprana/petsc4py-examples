@@ -17,21 +17,21 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
     αL = αT[:, 1]  
     αTotal = αG + αL 
     
-    αT = np.zeros((nx, nphases))   
- 
-    αT[:, 0] = αG / (αG + αL)
-    αT[:, 1] = αL / (αG + αL)    
+#     αT = np.zeros((nx, nphases))   
+#  
+#     αT[:, 0] = αG / (αG + αL)
+#     αT[:, 1] = αL / (αG + αL)    
      
     αGf = 0.5 * (αG[:-1] + αG[1:])   
     αLf = 0.5 * (αL[:-1] + αL[1:])   
     αGf = np.concatenate(([αGf[0]], αGf))
     αLf = np.concatenate(([αLf[0]], αLf))
            
-    UG = UT[:, 0]                 
-    UL = UT[:, 1]  
-    UT = np.zeros((nx, nphases))   
-    UT[:, 0] = UG * (αGf + αLf)
-    UT[:, 1] = UL * (αGf + αLf)
+#     UG = UT[:, 0]                 
+#     UL = UT[:, 1]  
+#     UT = np.zeros((nx, nphases))   
+#     UT[:, 0] = UG * (αGf + αLf)
+#     UT[:, 1] = UL * (αGf + αLf)
     
     ρg = density_model[0](P*1e5)
     ρL = density_model[1](P*1e5)
@@ -42,11 +42,10 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
 
     Ur = UT[:, 0] - UT[:, 1]
     γ = 1.2 # suggested value
+    γ = 0.0
     Pd = γ * ((αL * ρL * αG * ρg) / ρm / αTotal ** 2) * Ur ** 2 
 #     Pd = αG * αL * (ρL - ρg) * g * D
- 
-#     αT = np.maximum(αT, 0.0)
-#     αT = np.minimum(αT, 1.0)
+
     
     ρG = density_model[0](P*1e5)
     ρGf = 0.5 * (ρG[:-1] + ρG[1:])
@@ -128,12 +127,6 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
         Sif = np.concatenate(([Sif[0]], Sif))
         Swf = np.concatenate(([Swf[0]], Swf))
         Dhf = np.concatenate(([Dhf[0]], Dhf))
-        
-#         αf = np.maximum(αf, 1e-8)
-#         αf = np.minimum(αf, 0.99999999)
-#          
-#         α = np.maximum(α, 1e-8)
-#         α = np.minimum(α, 0.99999999)
 
         Rew = ρf * np.abs(U) * Dhf / μf
     
@@ -173,54 +166,56 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
         
         β = np.where(Uc > 0.0, 0.5, -0.5)
         # center momentum
-        f[1:-1, phase] += \
-            + ρf[1:-1] *  U[1:-1] * dtαc * ΔV \
-            + ρf[1:-1] * αf[1:-1] * dtU[1:-1] * ΔV \
-            +  U[1:-1] * αf[1:-1] * c[1:-1] * dtPc * 1e5 * ΔV \
-            + mec * ((0.5 - β[1:  ]) * U[2:  ] + (0.5 + β[1:  ]) * U[1:-1]) \
-            - mwc * ((0.5 - β[ :-1]) * U[1:-1] + (0.5 + β[ :-1]) * U[ :-2]) \
-            + αf[1:-1] * (P[1:-1] - P[:-2]) * 1e5 * A \
-            + αf[1:-1] * ρf[1:-1] * g * np.cos(θ) * A * (H[1:-1] - H[:-2]) \
-            + τw[1:-1] * (Swf[1:-1] / A) * ΔV + sign_τ[phase] * τi[1:-1] * (Sif[1:-1] / A) * ΔV \
-            + αf[1:-1] * (Pd[1:-1] - Pd[:-2]) * A
 #         f[1:-1, phase] += \
 #             + ρf[1:-1] *  U[1:-1] * dtαc * ΔV \
 #             + ρf[1:-1] * αf[1:-1] * dtU[1:-1] * ΔV \
 #             +  U[1:-1] * αf[1:-1] * c[1:-1] * dtPc * 1e5 * ΔV \
-#             + α[1:-1] * ρ[1:-1] * Uc[1:  ] * A * ((0.5 - β[1:  ]) * U[2:  ] + (0.5 + β[1:  ]) * U[1:-1]) \
-#             - α[ :-2] * ρ[ :-2] * Uc[ :-1] * A * ((0.5 - β[ :-1]) * U[1:-1] + (0.5 + β[ :-1]) * U[ :-2]) \
+#             + mec * ((0.5 - β[1:  ]) * U[2:  ] + (0.5 + β[1:  ]) * U[1:-1]) \
+#             - mwc * ((0.5 - β[ :-1]) * U[1:-1] + (0.5 + β[ :-1]) * U[ :-2]) \
 #             + αf[1:-1] * (P[1:-1] - P[:-2]) * 1e5 * A \
-#             + αf[1:-1] * ρf[1:-1] * g * np.cos(θ) * A * (H[1:-1] - H[:-2])  \
+#             + αf[1:-1] * ρf[1:-1] * g * np.cos(θ) * A * (H[1:-1] - H[:-2]) \
 #             + τw[1:-1] * (Swf[1:-1] / A) * ΔV + sign_τ[phase] * τi[1:-1] * (Sif[1:-1] / A) * ΔV \
 #             + αf[1:-1] * (Pd[1:-1] - Pd[:-2]) * A
         
         # Momentum balance for half control volume
-        f[-1, phase] += \
-            + ρf[-1] *  U[-1] * dtαc[-1] * ΔV * 0.5 \
-            + ρf[-1] * αf[-1] * dtU[-1] * ΔV * 0.5 \
-            +  U[-1] * αf[-1] * c[-1] * dtPc[-1] * 1e5 * ΔV * 0.5 \
-            + me[-1] * U[-1] \
-            - me[-1] * ((0.5 - β[-1]) * U[-1] + (0.5 + β[-1]) * U[-2]) \
-            + αf[-1] * (Ppresc - P[-2]) * 1e5 * A \
-            + αf[-1] * ρf[-1] * g * np.cos(θ) * A * (H[-1] - H[-2])  \
-            + τw[-1] * (Swf[-1] / A) * ΔV * 0.5 + sign_τ[phase] * τi[-1] * (Sif[-1] / A) * ΔV * 0.5 \
-            + αf[-1] * (Pd[-1] - Pd[-2]) * A
 #         f[-1, phase] += \
 #             + ρf[-1] *  U[-1] * dtαc[-1] * ΔV * 0.5 \
 #             + ρf[-1] * αf[-1] * dtU[-1] * ΔV * 0.5 \
 #             +  U[-1] * αf[-1] * c[-1] * dtPc[-1] * 1e5 * ΔV * 0.5 \
-#             + α[-1] * ρ[-1] * U[-1] * A * U[-1] \
-#             - α[-1] * ρ[-1] * Uc[-1] * A * ((0.5 - β[-1]) * U[-1] + (0.5 + β[-1]) * U[-2]) \
+#             + me[-1] * U[-1] \
+#             - me[-1] * ((0.5 - β[-1]) * U[-1] + (0.5 + β[-1]) * U[-2]) \
 #             + αf[-1] * (Ppresc - P[-2]) * 1e5 * A \
 #             + αf[-1] * ρf[-1] * g * np.cos(θ) * A * (H[-1] - H[-2])  \
 #             + τw[-1] * (Swf[-1] / A) * ΔV * 0.5 + sign_τ[phase] * τi[-1] * (Sif[-1] / A) * ΔV * 0.5 \
 #             + αf[-1] * (Pd[-1] - Pd[-2]) * A
-  
+        f[1:-1, phase] += \
+            + ρf[1:-1] *  U[1:-1] * dtαc * ΔV \
+            + ρf[1:-1] * αf[1:-1] * dtU[1:-1] * ΔV \
+            +  U[1:-1] * αf[1:-1] * c[1:-1] * dtPc * 1e5 * ΔV \
+            + α[1:-1] * ρ[1:-1] * Uc[1:  ] * A * ((0.5 - β[1:  ]) * U[2:  ] + (0.5 + β[1:  ]) * U[1:-1]) \
+            - α[ :-2] * ρ[ :-2] * Uc[ :-1] * A * ((0.5 - β[ :-1]) * U[1:-1] + (0.5 + β[ :-1]) * U[ :-2]) \
+            + αf[1:-1] * (P[1:-1] - P[:-2]) * 1e5 * A \
+            + αf[1:-1] * ρf[1:-1] * g * np.cos(θ) * A * (H[1:-1] - H[:-2])  \
+            + τw[1:-1] * (Swf[1:-1] / A) * ΔV + sign_τ[phase] * τi[1:-1] * (Sif[1:-1] / A) * ΔV \
+            + αf[1:-1] * (Pd[1:-1] - Pd[:-2]) * A
+        f[-1, phase] += \
+            + ρf[-1] *  U[-1] * dtαc[-1] * ΔV * 0.5 \
+            + ρf[-1] * αf[-1] * dtU[-1] * ΔV * 0.5 \
+            +  U[-1] * αf[-1] * c[-1] * dtPc[-1] * 1e5 * ΔV * 0.5 \
+            + α[-1] * ρ[-1] * U[-1] * A * U[-1] \
+            - α[-1] * ρ[-1] * Uc[-1] * A * ((0.5 - β[-1]) * U[-1] + (0.5 + β[-1]) * U[-2]) \
+            + αf[-1] * (Ppresc - P[-2]) * 1e5 * A \
+            + αf[-1] * ρf[-1] * g * np.cos(θ) * A * (H[-1] - H[-2])  \
+            + τw[-1] * (Swf[-1] / A) * ΔV * 0.5 + sign_τ[phase] * τi[-1] * (Sif[-1] / A) * ΔV * 0.5 \
+            + αf[-1] * (Pd[-1] - Pd[-2]) * A
+        
+#         f[1:, phase] /= 1e5
+        
         ######################################
         ######################################
         # MASS CENTRAL NODES
         ρρ = np.concatenate(([ρ[0]], ρ))
-        αα = np.concatenate(([10], α))
+        αα = np.concatenate(([1], α))
         β = np.where(U > 0.0, 0.5, -0.5) 
         
         
@@ -230,7 +225,7 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
             + ((0.5 - β[1:  ]) * ρ[1:  ] * α[1:  ] + (0.5 + β[1:  ]) *  ρ[ :-1]  * α[ :-1]) * U[1:  ] * A \
             - ((0.5 - β[ :-1]) * ρ[ :-1] * α[ :-1] + (0.5 + β[ :-1]) * ρρ[ :-2] * αα[ :-2]) * U[ :-1] * A  
         f[:-1, phase+nphases] += fp
-        f[:-1, -1] += fp    
+#         f[:-1, -1] += fp
         ######################################
    
 #         f[:-1, -1] += f[:-1, phase+nphases]
@@ -241,23 +236,15 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
         
         # boundaries            
         # Momentum            
-#         if αf[0] < 1e-3: # Fix for low α value
-#             f[0,phase] = (Mpresc[phase] - 0.001 * ρf[0] * U[0] * A)
-#         else:       
-#             f[0,phase] = -(Mpresc[phase] - αf[0] * ρf[0] * U[0] * A)
-        f[0,phase] = -(Mpresc[phase] - 10 * ρf[0] * U[0] * A)
+        f[0,phase] = -(Mpresc[phase] - αα[0] * ρρ[0] * U[0] * A)
         
         # Mass
         f[-1,phase+nphases] = -(α[-2] - α[-1])
     
-#     f[:-1, -1] += 1  #  αG + αL = 1
-#     f[:-1, -1] = 1 - αTotal[:-1]
-#     f[:, 0] = UT[:, 0] - UT[:, 1]
+    f[:-1, -1] = 1 - αTotal[:-1]
 
     # pressure ghost    
-#     f[ -1, -1] = -(Ppresc - 0.5 * (P[-1] + P[-2]))
     f[ -1, -1] = -(Ppresc - P[-1])
-    
-#     f[:-1, 2] = 1 - (αT[:-1, 0] + αT[:-1, 1])
+
 
     return f

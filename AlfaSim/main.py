@@ -11,8 +11,8 @@ options = PETSc.Options()
 options.clear()
 
 options.setValue('-mat_fd_type', 'ds')
-options.setValue('-mat_fd_coloring_err', 1e-3)
-options.setValue('-mat_fd_coloring_umin', 1e-5)
+# options.setValue('-mat_fd_coloring_err', 1e-3)
+# options.setValue('-mat_fd_coloring_umin', 1e-5)
 
 # options.setValue('-mat_view', 'draw')
 # options.setValue('-draw_pause', 5000)
@@ -66,7 +66,7 @@ dof = nphases * 2 + 1
 
     
 Ppresc  = 1.0 # [bar]
-Mpresc = [0.002, 0.3] # [kg/s]    
+Mpresc = [0.02, 3] # [kg/s]    
 
 diameter = 0.1 # [m]
 pipe_length = 100.0 # [m]
