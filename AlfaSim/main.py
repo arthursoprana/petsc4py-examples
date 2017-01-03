@@ -37,7 +37,7 @@ options.setValue('pc_factor_shift_type', 'NONZERO')
 # options.setValue('pc_factor_nonzeros_along_diagonal', None)
 
 # Normal volume fractions, pure newton is ok
-αG = 0.1
+αG = 1e-8
 options.setValue('-snes_type', 'newtonls')
 # options.setValue('-snes_type', 'vinewtonrsls')
 # options.setValue('-npc_snes_type', 'ngs')
@@ -54,8 +54,8 @@ options.setValue('-snes_linesearch_type', 'l2')
 # time_intervals = np.linspace(0.1, 25, num=250) # [s]
 time_intervals = np.linspace(0.1, 200, num=2500) # [s]
 # time_intervals = [20.0]
-dt = 0.001     # [s]
-dt_min = 0.000001 # [s]
+dt = 1e-3    # [s]
+dt_min = 1e-6 # [s]
 dt_max = 0.02  # [s]
 
 

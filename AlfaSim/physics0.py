@@ -139,14 +139,17 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
         ρρ = np.concatenate(([ρ[0]], ρ))
         αα = np.concatenate(([α[0]], α))
         β = np.where(U > 0.0, 0.5, -0.5)
+        Uc = 0.5 * (U[1:] + U[:-1])
+#         Uc = (1 / α[:-1]) * 2.0 * (αf[1:] * U[1:] * αf[:-1] * U[:-1]) / (αf[1:] * U[1:] + αf[:-1] * U[:-1])
         
         me = ((0.5 - β[1:  ]) * ρ[1:  ] * α[1:  ] + (0.5 + β[1:  ]) *  ρ[ :-1]  * α[ :-1]) * U[1:  ] * A
         mw = ((0.5 - β[ :-1]) * ρ[ :-1] * α[ :-1] + (0.5 + β[ :-1]) * ρρ[ :-2] * αα[ :-2]) * U[ :-1] * A  
-#         mec = 0.5 * (me[1:] + me[:-1])
-#         mwc = 0.5 * (mw[1:] + mw[:-1])
         
-#         Uc = (1 / α[:-1]) * 2.0 * (αf[1:] * U[1:] * αf[:-1] * U[:-1]) / (αf[1:] * U[1:] + αf[:-1] * U[:-1])
-        Uc = 0.5 * (U[1:] + U[:-1])
+        # Left BC
+        mw[0] = Mpresc[phase]
+        
+#         mec = 0.5 * (me[1:] + me[:-1])
+#         mwc = 0.5 * (mw[1:] + mw[:-1])        
         mec = α[1:-1] * ρ[1:-1] * Uc[1:  ] * A
         mwc = α[ :-2] * ρ[ :-2] * Uc[ :-1] * A
         
@@ -157,7 +160,7 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
         # Staggered
         dtPc = 0.5 * (dtP[:-2] + dtP[1:-1])
         dtαc = 0.5 * (dtα[:-2] + dtα[1:-1])
-        θ = 0.0 # for now
+        θ = 0 # for now
         β = np.where(Uc > 0.0, 0.5, -0.5)
         # center momentum
         f[1:-1, phase] += \
@@ -168,6 +171,7 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
             - mwc * ((0.5 - β[ :-1]) * U[1:-1] + (0.5 + β[ :-1]) * U[ :-2]) \
             + αf[1:-1] * (P[1:-1] - P[:-2]) * 1e5 * A \
             + αf[1:-1] * ρf[1:-1] * g * np.cos(θ) * A * (H[1:-1] - H[:-2])  \
+            + αf[1:-1] * ρf[1:-1] * g * np.sin(θ) * ΔV \
             + τw[1:-1] * (Swf[1:-1] / A) * ΔV + sign_τ[phase] * τi[1:-1] * (Sif[1:-1] / A) * ΔV \
             + αf[1:-1] * (Pd[1:-1] - Pd[:-2]) * A
         f[-1, phase] += \
@@ -178,6 +182,7 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
             - α[-2] * ρ[-2] * Uc[-1] * A * ((0.5 - β[-1]) * U[-1] + (0.5 + β[-1]) * U[-2]) \
             + αf[-1] * (Ppresc - P[-2]) * 1e5 * A \
             + αf[-1] * ρf[-1] * g * np.cos(θ) * A * (H[-1] - H[-2])  \
+            + αf[-1] * ρf[-1] * g * np.sin(θ) * ΔV * 0.5 \
             + τw[-1] * (Swf[-1] / A) * ΔV * 0.5 + sign_τ[phase] * τi[-1] * (Sif[-1] / A) * ΔV * 0.5 \
             + αf[-1] * (Pd[-1] - Pd[-2]) * A
         
@@ -188,10 +193,7 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
         # MASS CENTRAL NODES
         ρρ = np.concatenate(([ρ[0]], ρ))
         αα = np.concatenate(([α[0]], α))
-        β = np.where(U > 0.0, 0.5, -0.5)         
-        
-        # Left BC
-        mw[0] = Mpresc[phase]
+        β = np.where(U > 0.0, 0.5, -0.5)
         
         fp =  \
             + ρ[:-1] * dtα[:-1] * ΔV \

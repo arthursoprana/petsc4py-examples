@@ -392,12 +392,18 @@ class Solver(object):
 
     def normalize_vol_frac(self):
         α, _ = self.get_vol_frac_array() 
+        U, _ = self.get_velocity_array() 
         
         αG = α[:, 0].copy()                
         αL = α[:, 1].copy()     
         αTotal = αG + αL
+        αfTotal = 0.5 * (αTotal[:-1] + αTotal[1:])               
+        αfTotal = np.concatenate(([αfTotal[0]], αfTotal))    
+        
         α[:, 0] = αG / αTotal
-        α[:, 1] = αL / αTotal
+        α[:, 1] = αL / αTotal        
+        U[:, 0] *= αfTotal
+        U[:, 1] *= αfTotal
     
     def calculate_residual_mom(self):
         self.form_function_mom(self.snes_mom, self.Xmom, self.Fmom)  

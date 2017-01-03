@@ -37,7 +37,7 @@ options.setValue('pc_factor_shift_type', 'NONZERO')
 # options.setValue('pc_factor_nonzeros_along_diagonal', None)
 
 # Normal volume fractions, pure newton is ok
-αG = 0.000000001
+αG = 0.1e-7
 options.setValue('-snes_type', 'newtonls')
 # options.setValue('-snes_type', 'vinewtonssls')
 # options.setValue('-npc_snes_type', 'ngs')
@@ -51,15 +51,15 @@ options.setValue('-snes_type', 'newtonls')
 # options.setValue('-sub_1_snes_linesearch_type', 'basic')
 # options.setValue('-sub_1_npc_snes_type', 'ngs')
 
-options.setValue('-snes_linesearch_type', 'basic')
+options.setValue('-snes_linesearch_type', 'l2')
 options.setValue('-snes_linesearch_damping', 1)
-time_intervals = np.linspace(0.1, 250, num=2500) # [s]
+time_intervals = np.linspace(0.001, 15, num=2500) # [s]
 # time_intervals = np.linspace(0.0001, 0.001, num=2500) # [s]
 # time_intervals = np.concatenate(([11], time_intervals)) # [s]
 # time_intervals = [20.0]
 dt = 0.001     # [s]
 dt_min = 0.001 # [s]
-dt_max = 0.02  # [s]
+dt_max = 0.002  # [s]
 
 
 nx = 1000
@@ -69,7 +69,7 @@ dof = nphases * 2 + 1
 
     
 Ppresc  = 1.0 # [bar]
-Mpresc = [0.002, 0.3] # [kg/s]    
+Mpresc = [0.02, 3] # [kg/s]    
 
 diameter = 0.1 # [m]
 pipe_length = 100.0 # [m]
@@ -84,7 +84,7 @@ initial_solution[:,3] = 1-αG # vol frac
 initial_solution[:,-1] = np.linspace(1.0,1.0,num=nx)  # Pressure
 initial_time = 0.0
 
-RESTART = True
+RESTART = False
 if RESTART:
     α = np.load('W:\\vol_frac1.npy')
     P = np.load('W:\\pressure1.npy')
@@ -118,9 +118,9 @@ for i, final_time in enumerate(time_intervals):
     
 #     if final_time < 11.2 and not RESTART:
 #     print('\t\t\t\t *************** SAVING FOR RESTART')
-#     np.save('W:\\vol_frac', α)
-#     np.save('W:\\pressure', P)
-#     np.save('W:\\velocity', U)
+#     np.save('W:\\vol_frac2', α)
+#     np.save('W:\\pressure2', P)
+#     np.save('W:\\velocity2', U)
         
     initial_solution[:,0:nphases] = U # Velocity
     initial_solution[:,nphases:-1] = α # vol frac
