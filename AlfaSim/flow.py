@@ -66,38 +66,13 @@ class Solver(object):
         
     def solve(self):        
         while self.current_time < self.final_time:
-            nphases = self.nphases
-            dof = self.dof
-            nx  = self.nx 
-            sol = self.snes.getSolution()[...]
-            if len(sol) > 0:
-                u = sol.reshape(nx, dof)  
-                U = u[:, 0:nphases]
-                α = u[:, nphases:-1]   
-                αG = α[:, 0]
-                αL = α[:, 1]
-                UG = U[:, 0]
-                print('************  \n  \tΔt = %gs\t t = %gs and max α is %g' % (self.Δt, self.current_time, α.max()))
-
-            else:
-                print('************  \n  \tΔt = %gs\t t = %gs' % (self.Δt, self.current_time))
+            print('************  \n  \tΔt = %gs\t t = %gs' % (self.Δt, self.current_time))
+            
             max_iter = 10
             for i in range(max_iter):
                 self.snes.solve(None, self.X)
                 
-                sol = self.snes.getSolution()[...]
-                u = sol.reshape(nx, dof)
-                α = u[:, nphases:-1] # view!
-                αG = α[:, 0].copy()
-                αL = α[:, 1].copy()
-                αTotal = αG + αL
-                U = u[:, 0:nphases] # view!
-                αfTotal = 0.5 * (αTotal[:-1] + αTotal[1:])               
-                αfTotal = np.concatenate(([αfTotal[0]], αfTotal))        
-                α[:, 0] = αG / αTotal
-                α[:, 1] = αL / αTotal
-                U[:, 0] *= αfTotal
-                U[:, 1] *= αfTotal
+                self.normalize_vol_frac()
 
                 if self.snes.converged:
                     break
@@ -108,13 +83,11 @@ class Solver(object):
             self.Xold = self.X.copy()
             self.current_time += self.Δt
             
-            uold = self.Xold[...].reshape(nx, dof)  
-            Pold = uold[:, -1]
-            for phase in range(nphases):            
-                self.ρref[:, phase] = density_model[phase](Pold*1e5)
+            self.update_ref_density()            
             
             if self.current_time > 0.001:
                 self.Δt = np.maximum(self.min_Δt, np.minimum(self.Δt*1.1, self.max_Δt))
+                    
                     
     def form_function(self, snes, X, F):       
         L   = self.L
@@ -122,27 +95,66 @@ class Solver(object):
         nx  = self.nx
         dt = self.Δt
         dx = L / (nx - 1)
-        
-        nphases = self.nphases
-        uold = self.Xold.getArray()
-        u = X.getArray(readonly=True)
-        udot = (u - uold) / dt   
-             
-        u = u.reshape(nx, dof)        
-        U = u[:, 0:nphases]
-        α = u[:, nphases:-1]
-        P = u[:, -1]
 
-        udot = udot.reshape(nx, dof)        
-        dtU = udot[:, 0:nphases]
-        dtα = udot[:, nphases:-1]
-        dtP = udot[:, -1]
+        U, α, P, dtU, dtα, dtP = self.get_UαP_array(X=X)
 
         residual = calculate_residual(dt, U, dtU, α, dtα, P, dtP, dx, nx, dof, self.Mpresc, self.Ppresc, 
                                       self.ρref, self.D, self.Dh, self.Sw, self.Si, None, None)
         F.setArray(residual.flatten())
+               
+    
+    def get_UαP_array(self, X=None):
+        nx  = self.nx
+        nphases = self.nphases
+        dof = self.dof
+        dt = self.Δt
+        
+        uold = self.Xold.getArray()
+        if X is None:
+            u = self.X.getArray()     
+        else:
+            u = X.getArray(readonly=True)  
+               
+        u    =    u.reshape(nx, dof)        
+        uold = uold.reshape(nx, dof)      
+        udot = (u - uold) / dt
+        
+        U = u[:, 0:nphases]
+        α = u[:, nphases:-1]
+        P = u[:, -1]
+      
+        dtU = udot[:, 0:nphases]
+        dtα = udot[:, nphases:-1]
+        dtP = udot[:, -1]
+        
+        return U, α, P, dtU, dtα, dtP
                       
-                        
+    def normalize_vol_frac(self):
+        U, α, P, dtU, dtα, dtP = self.get_UαP_array()
+        
+        αG = α[:, 0].copy()
+        αL = α[:, 1].copy()
+        αTotal = αG + αL
+
+        αfTotal = 0.5 * (αTotal[:-1] + αTotal[1:])               
+        αfTotal = np.concatenate(([αfTotal[0]], αfTotal))    
+            
+        α[:, 0] = αG / αTotal
+        α[:, 1] = αL / αTotal
+        U[:, 0] *= αfTotal
+        U[:, 1] *= αfTotal
+        
+    
+    def update_ref_density(self):
+        nphases = self.nphases
+        dof = self.dof
+        nx  = self.nx
+        uold = self.Xold[...].reshape(nx, dof)  
+        Pold = uold[:, -1]
+        for phase in range(nphases):            
+            self.ρref[:, phase] = density_model[phase](Pold*1e5)     
+                   
+                   
 def transient_pipe_flow_1D(
     npipes, nx, dof, nphases,
     pipe_length, diameter,

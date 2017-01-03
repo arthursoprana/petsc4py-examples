@@ -163,10 +163,6 @@ def ComputeSectorAngle(volume_fraction, extra_precision=True):
 
 def computeGeometricProperties(α, D):
     assert α.shape[1] == 2, 'Only 2 phases supported!'
-#     α = α.copy()
-#     α[:, 0] = np.maximum(α[:, 0], 1e-8)
-#     α[:, 0] = np.minimum(α[:, 0], 0.99999999)
-#     α[:, 1] = 1 - α[:, 0]
     
     δ  = ComputeSectorAngle(α)        
         

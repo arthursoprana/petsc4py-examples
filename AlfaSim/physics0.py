@@ -17,21 +17,21 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
     αL = αT[:, 1]  
     αTotal = αG + αL 
     
-#     αT = np.zeros((nx, nphases))   
-#   
-#     αT[:, 0] = αG / (αG + αL)
-#     αT[:, 1] = αL / (αG + αL)    
-#      
-#     αGf = 0.5 * (αG[:-1] + αG[1:])   
-#     αLf = 0.5 * (αL[:-1] + αL[1:])   
-#     αGf = np.concatenate(([αGf[0]], αGf))
-#     αLf = np.concatenate(([αLf[0]], αLf))
-#            
-#     UG = UT[:, 0]                 
-#     UL = UT[:, 1]  
-#     UT = np.zeros((nx, nphases))   
-#     UT[:, 0] = UG * (αGf + αLf)
-#     UT[:, 1] = UL * (αGf + αLf)
+    αT = np.zeros((nx, nphases))   
+   
+    αT[:, 0] = αG / (αG + αL)
+    αT[:, 1] = αL / (αG + αL)    
+      
+    αGf = 0.5 * (αG[:-1] + αG[1:])   
+    αLf = 0.5 * (αL[:-1] + αL[1:])   
+    αGf = np.concatenate(([αGf[0]], αGf))
+    αLf = np.concatenate(([αLf[0]], αLf))
+            
+    UG = UT[:, 0]                 
+    UL = UT[:, 1]  
+    UT = np.zeros((nx, nphases))   
+    UT[:, 0] = UG * (αGf + αLf)
+    UT[:, 1] = UL * (αGf + αLf)
     
     ρg = density_model[0](P*1e5)
     ρL = density_model[1](P*1e5)
@@ -221,20 +221,14 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
             - ((0.5 - β[ :-1]) * ρ[ :-1] * α[ :-1] + (0.5 + β[ :-1]) * ρρ[ :-2] * αα[ :-2]) * U[ :-1] * A  
         f[:-1, phase+nphases] += fp
         ######################################
-   
-#         f[:-1, -1] += f[:-1, phase+nphases]
-#         f[:-1, -1] += f[:-1, phase+nphases] - α[:-1]
-#         f[:-1, -1] += f[:-1, phase+nphases] / ρref[:-1] - α[:-1]
-#         f[:-1, -1] += dt * f[:-1, phase+nphases] / ρ[:-1] - α[:-1]
-#         f[:-1, -1] += - α[:-1]
         
-        # boundaries            
-        # Momentum            
+        # Boundary Momentum            
         f[0,phase] = -(Mpresc[phase] - αα[0] * ρρ[0] * U[0] * A)
         
         # Mass
         f[-1,phase+nphases] = α[-1] - α[-2]
     
+    # Equation for pressure
     f[:-1, -1] = 1 - αTotal[:-1]
 
     # pressure ghost    
