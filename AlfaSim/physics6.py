@@ -3,7 +3,15 @@ from models import density_model, viscosity_model, andreussi_gas_liquid,\
     colebrook_white_explicit_friction_factor, GRAVITY_CONSTANT,\
     computeGeometricProperties
 
-
+########################################
+########################################
+########################################
+########################################
+# RESIDUALS
+########################################
+########################################
+########################################
+########################################
 def calculate_residual_press(dt, UT, UTold, αT, αTold, P, Pold, ΔP, dx, nx, dof, 
                             Mpresc, Ppresc, ρrefT, D, DhT=None, SwT=None, Si=None, H=None, fi=None, Pprev=None, Ap_uT=None):
            
@@ -57,129 +65,7 @@ def calculate_residual_press(dt, UT, UTold, αT, αTold, P, Pold, ΔP, dx, nx, d
 
     return f
 
-def calculate_jacobian_press(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof, 
-                            Mpresc, Ppresc, ρrefT, D, DhT=None, SwT=None, Si=None, H=None, fi=None, Pprev=None, Ap_uT=None):
-    
-    row  = []
-    col  = []
-    data = []
-    
-    bsize = 1
-    nphases = αT.shape[1] 
 
-    idx   = np.arange(nx, dtype=int) 
-    idxP  = idx
-                          
-    A = 0.25 * np.pi * D ** 2 # [m]
-    ΔV = A * dx
-
-    for phase in range(nphases):
-        
-        U = UT[:, phase]
-        
-        α = αT[:, phase]
-        
-        Uold = UTold[:, phase]
-        αold = αTold[:, phase]
-        
-        ρref = ρrefT[:, phase]
-        
-        ρ = density_model[phase](P*1e5)
-        c = density_model[phase](P*1e5, deriv=True)
-
-        ρold = density_model[phase](Pold*1e5)
-        
-        ρf = 0.5 * (ρ[:-1] + ρ[1:])
-        ρfold = 0.5 * (ρold[:-1] + ρold[1:])
-        cf = 0.5 * (c[:-1] + c[1:])
-        αf = 0.5 * (α[:-1] + α[1:])
-        αfold = 0.5 * (αold[:-1] + αold[1:])
-        ρf = np.concatenate(([ρf[0]], ρf))
-        ρfold = np.concatenate(([ρfold[0]], ρfold))
-        cf = np.concatenate(([cf[0]], cf))
-        αf = np.concatenate(([αf[0]], αf))
-        αfold = np.concatenate(([αfold[0]], αfold))
-
-        
-        Ap_u = Ap_uT[:, phase]
-
-                       
-        ρρ = np.concatenate(([ρ[0]], ρ))
-        αα = np.concatenate(([α[0]], α))
-        β = np.where(U > 0.0, 0.5, -0.5) 
-           
-        
-        ############################
-        ##### DERIVATIVES W.R.T U    
-        #- αf[1:-1] * (P[1:-1] - P[:-2]) * 1e5 * A / Ap_u[1:-1]
-        # e Û[1:  ] 
-        dRdUe = np.zeros(nx)
-        dRdUw = np.zeros(nx)
-        dUdPw = np.zeros(nx)
-        dUdPe = np.zeros(nx)
-        
-        # Last mass V.C. is ghost
-        dRdUe[:-1] = + ((0.5 - β[1:  ]) * ρ[1:  ] * α[1:  ] + (0.5 + β[1:  ]) *  ρ[ :-1]  * α[ :-1]) * A        
-        
-        # w Û[1:  ] 
-        dRdUw[:-1] = - ((0.5 - β[ :-1]) * ρ[ :-1] * α[ :-1] + (0.5 + β[ :-1]) * ρρ[ :-2] * αα[ :-2]) * A
-
-
-        dUdPw = - αf * (-1) * 1e5 * A / Ap_u
-        dUdPe = - αf * (+1) * 1e5 * A / Ap_u
-        
-        ############################
-        ##### DERIVATIVES W.R.T P    
-        
-        dRdρP = + (α[:-1]) * ΔV/dt \
-            + ((0.5 + β[1:  ]) * α[ :-1]) * U[1:  ] * A \
-            - ((0.5 - β[ :-1]) * α[ :-1]) * U[ :-1] * A
-            
-        dRdρE = + ((0.5 - β[1:  ]) *  α[1:  ]) * U[1:  ] * A 
-        dRdρW = - ((0.5 + β[ :-1]) * αα[ :-2]) * U[ :-1] * A      
-        
-        dρdP = c[:-1] * 1e5 # like this for now
-        
-
-        # dUedPw -> PP
-        # dUwdPe -> PP        
-        dRdPP = dRdρP*dρdP + dRdUe[:-1]*dUdPw[1:] + dRdUw[:-1]*dUdPe[:-1]
-        
-        # dUedPe -> PE
-        dRdPE = dRdρE*dρdP + dRdUe[:-1]*dUdPe[1:]
-        # dUwdPw -> PW
-        dRdPW = dRdρW*dρdP + dRdUw[:-1]*dUdPw[:-1]
-#         # dUedPe -> PE
-#         dRdPE = dRdρE*dρdP + dRdUe[:-1]*dUdPe[:-1]
-#         # dUwdPw -> PW
-#         dRdPW = dRdρW*dρdP + dRdUw[:-1]*dUdPw[1:]
-        
-        dRdPP /= ρref[:-1]
-        dRdPE /= ρref[:-1]
-        dRdPW /= ρref[:-1]
- 
-        row  = np.concatenate((row , idxP[:-1])).astype(int)
-        col  = np.concatenate((col , idxP[:-1])).astype(int)
-        data = np.concatenate((data, dRdPP))
-        
-        row  = np.concatenate((row , idxP[:-2])).astype(int)
-        col  = np.concatenate((col , idxP[:-2] + bsize)).astype(int)
-        data = np.concatenate((data, dRdPE[:-1]))
-#         data = np.concatenate((data, dRdPE[1:]))
-        
-        row  = np.concatenate((row , idxP[1:-1])).astype(int)
-        col  = np.concatenate((col , idxP[1:-1] - bsize)).astype(int)
-        data = np.concatenate((data, dRdPW[1:]))
-#         data = np.concatenate((data, dRdPW[:-1]))
-
-
-    # pressure ghost
-    row  = np.concatenate((row , [idxP[-1]])).astype(int)
-    col  = np.concatenate((col , [idxP[-1]])).astype(int)
-    data = np.concatenate((data, [1]))
-
-    
-    return row, col, data
 
 def calculate_residual_mass(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof, 
                             Mpresc, Ppresc, ρrefT, D, DhT=None, SwT=None, Si=None, H=None, fi=None, Pprev=None, Ap_uT=None):
@@ -218,81 +104,7 @@ def calculate_residual_mass(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof,
     return f
 
 
-def calculate_jacobian_mass(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof, 
-                            Mpresc, Ppresc, ρrefT, D, DhT=None, SwT=None, Si=None, H=None, fi=None, Pprev=None, Ap_uT=None):
-    
-    row  = []
-    col  = []
-    data = []
-    
-    nphases = αT.shape[1] 
-    
-    bsize = nphases
-    idx   = np.arange(nx, dtype=int) 
-                          
-    A = 0.25 * np.pi * D ** 2 # [m]
-    ΔV = A * dx
-    
-    for phase in range(nphases):        
-        idxα = idx * bsize + phase        
-        U = UT[:, phase]        
-        α = αT[:, phase]
-        αold = αTold[:, phase]        
-        
-        ρ = density_model[phase](P*1e5)
-        c = density_model[phase](P*1e5, deriv=True)
 
-        ρold = density_model[phase](Pold*1e5)
-        
-        ρf = 0.5 * (ρ[:-1] + ρ[1:])
-        ρfold = 0.5 * (ρold[:-1] + ρold[1:])       
-        cf = 0.5 * (c[:-1] + c[1:])
-        αf = 0.5 * (α[:-1] + α[1:])
-        αfold = 0.5 * (αold[:-1] + αold[1:])
-        ρf = np.concatenate(([ρf[0]], ρf))
-        ρfold = np.concatenate(([ρfold[0]], ρfold))
-        cf = np.concatenate(([cf[0]], cf))
-        αf = np.concatenate(([αf[0]], αf))
-        αfold = np.concatenate(([αfold[0]], αfold))
-                       
-        ρρ = np.concatenate(([ρ[0]], ρ))
-        β = np.where(U > 0.0, 0.5, -0.5) 
-        
-        # Coeff's            
-        ############################
-        ##### DERIVATIVES W.R.T α    
-        # P -> α[ :-1]
-        dRdαP = + (ρ[:-1] ) * ΔV/dt \
-                + ((0.5 + β[1:  ]) * ρ[ :-1]) * U[1:  ] * A \
-                - ((0.5 - β[ :-1]) * ρ[ :-1]) * U[ :-1] * A        
-        # E -> α[1:  ]  
-        dRdαE = + ((0.5 - β[1:  ]) *  ρ[1:  ]) * U[1:  ] * A     
-        # W -> α[ :-1] 
-        dRdαW = - ((0.5 + β[ :-1]) * ρρ[ :-2]) * U[ :-1] * A
-        
-        ##################################
-        # Volume Fraction Derivatives - α
-        ##################################
-
-        row  = np.concatenate((row , idxα[:-1])).astype(int)
-        col  = np.concatenate((col , idxα[:-1])).astype(int)
-        data = np.concatenate((data, dRdαP))
-        
-        row  = np.concatenate((row , idxα[:-2])).astype(int)
-        col  = np.concatenate((col , idxα[:-2] + bsize)).astype(int)
-        data = np.concatenate((data, dRdαE[:-1]))
-#         data = np.concatenate((data, dRdαE[1:])) # CHECK THIS!
-        
-        row  = np.concatenate((row , idxα[1:-1])).astype(int)
-        col  = np.concatenate((col , idxα[1:-1] - bsize)).astype(int)
-        data = np.concatenate((data, dRdαW[1:]))
-#         data = np.concatenate((data, dRdαW[:-1])) # check THIS!
-
-        row  = np.concatenate((row , [idxα[-1], idxα[-1]])).astype(int)
-        col  = np.concatenate((col , idxα[-2:])).astype(int)
-        data = np.concatenate((data, [-1, 1]))
- 
-    return row, col, data
 
 
 def calculate_residual_mom(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof, Mpresc, Ppresc, ρrefT, D, DhT=None, SwT=None, Si=None, H=None, fi=None, Ap_uT=None):
@@ -420,9 +232,219 @@ def calculate_residual_mom(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof, Mpr
             + τw[-1] * (Swf[-1] / A) * ΔV * 0.5 + sign_τ[phase] * τi[-1] * (Sif[-1] / A) * ΔV * 0.5
        
         # boundary momentum                          
-        f[0,phase] = -(Mpresc[phase] - αf[0] * ρf[0] * U[0] * A) # this number 1.0 is important when α -> 0
+        f[0,phase] = -(Mpresc[phase] - αf[0] * ρf[0] * U[0] * A)
 
     return f
+
+########################################
+########################################
+########################################
+########################################
+# JACOBIANS
+########################################
+########################################
+########################################
+########################################
+def calculate_jacobian_press(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof, 
+                            Mpresc, Ppresc, ρrefT, D, DhT=None, SwT=None, Si=None, H=None, fi=None, Pprev=None, Ap_uT=None):
+    
+    row  = []
+    col  = []
+    data = []
+    
+    bsize = 1
+    nphases = αT.shape[1] 
+
+    idx   = np.arange(nx, dtype=int) 
+    idxP  = idx
+                          
+    A = 0.25 * np.pi * D ** 2 # [m]
+    ΔV = A * dx
+
+    for phase in range(nphases):
+        
+        U = UT[:, phase]
+        
+        α = αT[:, phase]
+        
+        Uold = UTold[:, phase]
+        αold = αTold[:, phase]
+        
+        ρref = ρrefT[:, phase]
+        
+        ρ = density_model[phase](P*1e5)
+        c = density_model[phase](P*1e5, deriv=True)
+
+        ρold = density_model[phase](Pold*1e5)
+        
+        ρf = 0.5 * (ρ[:-1] + ρ[1:])
+        ρfold = 0.5 * (ρold[:-1] + ρold[1:])
+        cf = 0.5 * (c[:-1] + c[1:])
+        αf = 0.5 * (α[:-1] + α[1:])
+        αfold = 0.5 * (αold[:-1] + αold[1:])
+        ρf = np.concatenate(([ρf[0]], ρf))
+        ρfold = np.concatenate(([ρfold[0]], ρfold))
+        cf = np.concatenate(([cf[0]], cf))
+        αf = np.concatenate(([αf[0]], αf))
+        αfold = np.concatenate(([αfold[0]], αfold))
+
+        
+        Ap_u = Ap_uT[:, phase]
+
+                       
+        ρρ = np.concatenate(([ρ[0]], ρ))
+        αα = np.concatenate(([α[0]], α))
+        β = np.where(U > 0.0, 0.5, -0.5) 
+           
+        
+        ############################
+        ##### DERIVATIVES W.R.T U    
+        #- αf[1:-1] * (P[1:-1] - P[:-2]) * 1e5 * A / Ap_u[1:-1]
+        # e Û[1:  ] 
+        dRdUe = np.zeros(nx)
+        dRdUw = np.zeros(nx)
+        dUdPw = np.zeros(nx)
+        dUdPe = np.zeros(nx)
+        
+        # Last mass V.C. is ghost
+        dRdUe[:-1] = + ((0.5 - β[1:  ]) * ρ[1:  ] * α[1:  ] + (0.5 + β[1:  ]) *  ρ[ :-1]  * α[ :-1]) * A        
+        
+        # w Û[1:  ] 
+        dRdUw[:-1] = - ((0.5 - β[ :-1]) * ρ[ :-1] * α[ :-1] + (0.5 + β[ :-1]) * ρρ[ :-2] * αα[ :-2]) * A
+
+
+        dUdPw = - αf * (-1) * 1e5 * A / Ap_u
+        dUdPe = - αf * (+1) * 1e5 * A / Ap_u
+        
+        ############################
+        ##### DERIVATIVES W.R.T P    
+        
+        dRdρP = + (α[:-1]) * ΔV/dt \
+            + ((0.5 + β[1:  ]) * α[ :-1]) * U[1:  ] * A \
+            - ((0.5 - β[ :-1]) * α[ :-1]) * U[ :-1] * A
+            
+        dRdρE = + ((0.5 - β[1:  ]) *  α[1:  ]) * U[1:  ] * A 
+        dRdρW = - ((0.5 + β[ :-1]) * αα[ :-2]) * U[ :-1] * A      
+        
+        dρdP = c[:-1] * 1e5 # like this for now
+        
+
+        # dUedPw -> PP
+        # dUwdPe -> PP        
+        dRdPP = dRdρP*dρdP + dRdUe[:-1]*dUdPw[1:] + dRdUw[:-1]*dUdPe[:-1]
+        
+        # dUedPe -> PE
+        dRdPE = dRdρE*dρdP + dRdUe[:-1]*dUdPe[1:]
+        # dUwdPw -> PW
+        dRdPW = dRdρW*dρdP + dRdUw[:-1]*dUdPw[:-1]
+#         # dUedPe -> PE
+#         dRdPE = dRdρE*dρdP + dRdUe[:-1]*dUdPe[:-1]
+#         # dUwdPw -> PW
+#         dRdPW = dRdρW*dρdP + dRdUw[:-1]*dUdPw[1:]
+        
+        dRdPP /= ρref[:-1]
+        dRdPE /= ρref[:-1]
+        dRdPW /= ρref[:-1]
+ 
+        row  = np.concatenate((row , idxP[:-1])).astype(int)
+        col  = np.concatenate((col , idxP[:-1])).astype(int)
+        data = np.concatenate((data, dRdPP))
+        
+        row  = np.concatenate((row , idxP[:-2])).astype(int)
+        col  = np.concatenate((col , idxP[:-2] + bsize)).astype(int)
+        data = np.concatenate((data, dRdPE[:-1]))
+#         data = np.concatenate((data, dRdPE[1:]))
+        
+        row  = np.concatenate((row , idxP[1:-1])).astype(int)
+        col  = np.concatenate((col , idxP[1:-1] - bsize)).astype(int)
+        data = np.concatenate((data, dRdPW[1:]))
+#         data = np.concatenate((data, dRdPW[:-1]))
+
+
+    # pressure ghost
+    row  = np.concatenate((row , [idxP[-1]])).astype(int)
+    col  = np.concatenate((col , [idxP[-1]])).astype(int)
+    data = np.concatenate((data, [1]))
+
+    
+    return row, col, data
+
+
+def calculate_jacobian_mass(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof, 
+                            Mpresc, Ppresc, ρrefT, D, DhT=None, SwT=None, Si=None, H=None, fi=None, Pprev=None, Ap_uT=None):
+    
+    row  = []
+    col  = []
+    data = []
+    
+    nphases = αT.shape[1] 
+    
+    bsize = nphases
+    idx   = np.arange(nx, dtype=int) 
+                          
+    A = 0.25 * np.pi * D ** 2 # [m]
+    ΔV = A * dx
+    
+    for phase in range(nphases):        
+        idxα = idx * bsize + phase        
+        U = UT[:, phase]        
+        α = αT[:, phase]
+        αold = αTold[:, phase]        
+        
+        ρ = density_model[phase](P*1e5)
+        c = density_model[phase](P*1e5, deriv=True)
+
+        ρold = density_model[phase](Pold*1e5)
+        
+        ρf = 0.5 * (ρ[:-1] + ρ[1:])
+        ρfold = 0.5 * (ρold[:-1] + ρold[1:])       
+        cf = 0.5 * (c[:-1] + c[1:])
+        αf = 0.5 * (α[:-1] + α[1:])
+        αfold = 0.5 * (αold[:-1] + αold[1:])
+        ρf = np.concatenate(([ρf[0]], ρf))
+        ρfold = np.concatenate(([ρfold[0]], ρfold))
+        cf = np.concatenate(([cf[0]], cf))
+        αf = np.concatenate(([αf[0]], αf))
+        αfold = np.concatenate(([αfold[0]], αfold))
+                       
+        ρρ = np.concatenate(([ρ[0]], ρ))
+        β = np.where(U > 0.0, 0.5, -0.5) 
+        
+        # Coeff's            
+        ############################
+        ##### DERIVATIVES W.R.T α    
+        # P -> α[ :-1]
+        dRdαP = + (ρ[:-1] ) * ΔV/dt \
+                + ((0.5 + β[1:  ]) * ρ[ :-1]) * U[1:  ] * A \
+                - ((0.5 - β[ :-1]) * ρ[ :-1]) * U[ :-1] * A        
+        # E -> α[1:  ]  
+        dRdαE = + ((0.5 - β[1:  ]) *  ρ[1:  ]) * U[1:  ] * A     
+        # W -> α[ :-1] 
+        dRdαW = - ((0.5 + β[ :-1]) * ρρ[ :-2]) * U[ :-1] * A
+        
+        ##################################
+        # Volume Fraction Derivatives - α
+        ##################################
+
+        row  = np.concatenate((row , idxα[:-1])).astype(int)
+        col  = np.concatenate((col , idxα[:-1])).astype(int)
+        data = np.concatenate((data, dRdαP))
+        
+        row  = np.concatenate((row , idxα[:-2])).astype(int)
+        col  = np.concatenate((col , idxα[:-2] + bsize)).astype(int)
+        data = np.concatenate((data, dRdαE[:-1]))
+#         data = np.concatenate((data, dRdαE[1:])) # CHECK THIS!
+        
+        row  = np.concatenate((row , idxα[1:-1])).astype(int)
+        col  = np.concatenate((col , idxα[1:-1] - bsize)).astype(int)
+        data = np.concatenate((data, dRdαW[1:]))
+#         data = np.concatenate((data, dRdαW[:-1])) # check THIS!
+
+        row  = np.concatenate((row , [idxα[-1], idxα[-1]])).astype(int)
+        col  = np.concatenate((col , idxα[-2:])).astype(int)
+        data = np.concatenate((data, [-1, 1]))
+ 
+    return row, col, data
 
 
 def calculate_jacobian_mom(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof, 
@@ -480,9 +502,6 @@ def calculate_jacobian_mom(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof,
             np.abs(Ur),
             A * αGf
         )        
-        
-        τi = 0.5 * fi * ρGf * np.abs(Ur) * Ur   
-        sign_τ = [+1, -1]
     
     for phase in range(nphases):
         
@@ -527,9 +546,7 @@ def calculate_jacobian_mom(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof,
         Rew = ρf * np.abs(U) * Dhf / μf
     
         fw = colebrook_white_explicit_friction_factor(Rew, None, D, absolute_rugosity=1e-5)
-        τw = 0.5 * fw * ρf * np.abs(U) * U          
-
-        
+           
         ######################################
         # MOMENTUM CENTRAL NODES
         # Staggered
@@ -609,14 +626,23 @@ def calculate_jacobian_mom(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof,
  
     return row, col, data
 
+
+########################################
+########################################
+########################################
+########################################
+# OTHER
+########################################
+########################################
+########################################
+########################################
 def calculate_velocity_update(ΔP, Δα, dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof, Mpresc, Ppresc, ρrefT, D,
                       DhT=None, SwT=None, Si=None, H=None, fi=None, Ap_uT=None):
     
     ΔUT = np.zeros_like(UT)
     nphases = αT.shape[1]  
                                
-    A = 0.25 * np.pi * D ** 2 # [m]
-    ΔV = A * dx    
+    A = 0.25 * np.pi * D ** 2 # [m] 
         
     for phase in range(nphases):
         ΔU = ΔUT[:, phase]
@@ -681,9 +707,6 @@ def calculate_coeff_mom(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof, Mpresc
             np.abs(Ur),
             A * αGf
         )        
-        
-        τi = 0.5 * fi * ρGf * np.abs(Ur) * Ur   
-        sign_τ = [+1, -1]
     
     for phase in range(nphases):
         
@@ -693,8 +716,6 @@ def calculate_coeff_mom(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof, Mpresc
         
         Uold = UTold[:, phase]
         αold = αTold[:, phase]
-        
-        ρref = ρrefT[:, phase]
         
         Dh = DhT[:, phase]
         Sw = SwT[:, phase]
@@ -726,9 +747,7 @@ def calculate_coeff_mom(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof, Mpresc
         Rew = ρf * np.abs(U) * Dhf / μf
     
         fw = colebrook_white_explicit_friction_factor(Rew, None, D, absolute_rugosity=1e-5)
-        τw = 0.5 * fw * ρf * np.abs(U) * U          
-
-        
+      
         ######################################
         # MOMENTUM CENTRAL NODES
         # Staggered

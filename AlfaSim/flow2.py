@@ -1,15 +1,9 @@
 import numpy as np
 from petsc4py import PETSc
-from physics0 import calculate_residualαUP
-from physics1 import calculate_residualαUSP
-from physics3 import calculate_residualαUSPsimple
-from physics4 import calculate_residualαUPsimple
 from models import density_model, computeGeometricProperties
 from physics5 import calculate_residual_mass, calculate_residual_mom,\
     calculate_velocity_update, calculate_jacobian_mass, calculate_coeff_mom
 from scipy import sparse
-
-calculate_residual = calculate_residualαUPsimple
 
 
 class Solver(object):
@@ -63,8 +57,8 @@ class Solver(object):
 #         options.setValue('-mat_fd_coloring_umin', 1e-0)          
         #self.snes.setUpdate(self.update_function)
         self.snes.setFunction(self.form_function, self.F)
-        self.snes.setJacobian(self.form_jacobian, self.J)
-#         self.snes.setUseFD() # Enables coloring, same as -snes_fd_color
+#         self.snes.setJacobian(self.form_jacobian, self.J)
+        self.snes.setUseFD() # Enables coloring, same as -snes_fd_color
         self.snes.setFromOptions()
         
         

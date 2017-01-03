@@ -111,12 +111,9 @@ class Solver(object):
     def solve(self): 
         nphases = self.nphases
         
-        dof = self.dof
-        nx  = self.nx  
-        
 #         self.snes_mom.setType(self.snes_mom.Type.KSPONLY)
 #         self.snes_mass.setType(self.snes_mass.Type.KSPONLY)
-#         self.snes_press.setType(self.snes.Type.KSPONLY)
+#         self.snes_press.setType(self.snes_press.Type.KSPONLY)
 
         self.snes_press.setTolerances(rtol=1e-50, stol=1e-50, atol=1e-8, max_it=10)
         self.snes_mass.setTolerances(rtol=1e-50, stol=1e-50, atol=1e-8, max_it=10)
@@ -192,21 +189,31 @@ class Solver(object):
             if self.current_time > 0.001:
                 self.Δt = np.maximum(self.min_Δt, np.minimum(self.Δt*1.1, self.max_Δt))
     
-    def get_velocity_array(self):
+    def get_velocity_array(self, X=None):
         nx  = self.nx
         nphases = self.nphases
         uold = self.Xmomold.getArray()
-        u    = self.Xmom.getArray()       
+        
+        if X is None:
+            u = self.Xmom.getArray()     
+        else:
+            u = X.getArray(readonly=True)   
+                
         uold = uold.reshape(nx, nphases)        
         Uold = uold.copy()              
         U = u.reshape(nx, nphases) # view!
         return U, Uold
     
-    def get_vol_frac_array(self):
+    def get_vol_frac_array(self, X=None):
         nx  = self.nx
         nphases = self.nphases
         uold = self.Xmassold.getArray()
-        u    = self.Xmass.getArray()       
+  
+        if X is None:
+            u = self.Xmass.getArray()     
+        else:
+            u = X.getArray(readonly=True)  
+               
         uold = uold.reshape(nx, nphases)        
         αold = uold.copy()              
         α = u.reshape(nx, nphases) # view!
@@ -214,7 +221,7 @@ class Solver(object):
     
     def get_pressure_array(self):
         Pold = self.Xpressold.getArray()
-        P    = self.Xpress.getArray()       
+        P = self.Xpress.getArray()               
         return P, Pold
     
     def form_function_press(self, snes, X, F):      
@@ -225,14 +232,13 @@ class Solver(object):
         dof = self.dof
         nx  = self.nx
         dt = self.Δt
+        dx = L / (nx - 1)
         
         ΔP = X.getArray(readonly=True)
               
         P, Pold = self.get_pressure_array()       
         α, αold = self.get_vol_frac_array()        
-        U, Uold = self.get_velocity_array()
-        
-        dx = L / (nx - 1)
+        U, Uold = self.get_velocity_array()        
                     
         residual = calculate_residual_press(dt, U, Uold, α, αold, P + ΔP, Pold, ΔP, dx, nx, dof, self.Mpresc, self.Ppresc, 
                                       self.ρref, self.D, self.Dh, self.Sw, self.Si, None, None, None, self.Ap_u)
@@ -246,16 +252,14 @@ class Solver(object):
         L   = self.L
         dof = self.dof
         nx  = self.nx
-        nphases = self.nphases
         dt = self.Δt
+        dx = L / (nx - 1)
 
         ΔP = X.getArray(readonly=True)
         
         P, Pold = self.get_pressure_array()       
         α, αold = self.get_vol_frac_array()        
         U, Uold = self.get_velocity_array()
-
-        dx = L / (nx - 1)
         
         row, col, data = calculate_jacobian_press(dt, U, Uold, α, αold, P + ΔP, Pold, dx, nx, dof, self.Mpresc, self.Ppresc, 
                                       self.ρref, self.D, self.Dh, self.Sw, self.Si, None, None, None, self.Ap_u)
@@ -275,18 +279,12 @@ class Solver(object):
         L   = self.L
         dof = self.dof
         nx  = self.nx
-        nphases = self.nphases
         dt = self.Δt
-
-        uold = self.Xmassold.getArray()
-        u    = X.getArray(readonly=True)        
-        αold = uold.reshape(nx, nphases)
-        α = u.reshape(nx, nphases)
+        dx = L / (nx - 1)
         
         P, Pold = self.get_pressure_array()
-        U, Uold = self.get_velocity_array()
-        
-        dx = L / (nx - 1)
+        α, αold = self.get_vol_frac_array(X=X)
+        U, Uold = self.get_velocity_array()        
             
         residual = calculate_residual_mass(dt, U, Uold, α, αold, P, Pold, dx, nx, dof, self.Mpresc, self.Ppresc, 
                                       self.ρref, self.D, self.Dh, self.Sw, self.Si, None, None, None, self.Ap_u)
@@ -301,16 +299,11 @@ class Solver(object):
         nx  = self.nx
         nphases = self.nphases
         dt = self.Δt
-
-        uold = self.Xmassold.getArray()
-        u    = X.getArray(readonly=True)        
-        αold = uold.reshape(nx, nphases)
-        α = u.reshape(nx, nphases)
+        dx = L / (nx - 1)
         
         P, Pold = self.get_pressure_array()
+        α, αold = self.get_vol_frac_array(X=X)
         U, Uold = self.get_velocity_array()
-
-        dx = L / (nx - 1)
         
         row, col, data = calculate_jacobian_mass(dt, U, Uold, α, αold, P, Pold, dx, nx, dof, self.Mpresc, self.Ppresc, 
                                       self.ρref, self.D, self.Dh, self.Sw, self.Si, None, None, None, self.Ap_u)
@@ -328,21 +321,12 @@ class Solver(object):
         L   = self.L
         dof = self.dof
         nx  = self.nx
-        nphases = self.nphases
         dt = self.Δt        
-
-        uold = self.Xmomold.getArray()
-        u    = X.getArray(readonly=True)
-     
-        uold = uold.reshape(nx, nphases)        
-        Uold = uold.copy()        
-        u = u.reshape(nx, nphases)        
-        U = u.copy()
-
         dx = L / (nx - 1)        
         
         P, Pold = self.get_pressure_array()
-        α, αold = self.get_vol_frac_array()      
+        α, αold = self.get_vol_frac_array() 
+        U, Uold = self.get_velocity_array(X=X)     
         
         residual = calculate_residual_mom(dt, U, Uold, α, αold, P, Pold, dx, nx, dof, self.Mpresc, self.Ppresc, 
                                       self.ρref, self.D, self.Dh, self.Sw, self.Si, None, None, self.Ap_u)
@@ -357,19 +341,11 @@ class Solver(object):
         nx  = self.nx
         nphases = self.nphases
         dt = self.Δt        
-
-        uold = self.Xmomold.getArray()
-        u    = X.getArray(readonly=True)
-     
-        uold = uold.reshape(nx, nphases)        
-        Uold = uold.copy()        
-        u = u.reshape(nx, nphases)        
-        U = u.copy()
-
-        dx = L / (nx - 1)        
+        dx = L / (nx - 1) 
         
         P, Pold = self.get_pressure_array()
         α, αold = self.get_vol_frac_array()
+        U, Uold = self.get_velocity_array(X=X)   
         
         row, col, data = calculate_jacobian_mom(dt, U, Uold, α, αold, P, Pold, dx, nx, dof, self.Mpresc, self.Ppresc, 
                                       self.ρref, self.D, self.Dh, self.Sw, self.Si, None, None, None, self.Ap_u)
@@ -386,8 +362,7 @@ class Solver(object):
         dof = self.dof
         nx  = self.nx
         dt = self.Δt
-    
-        dx = L / (nx - 1)        
+        dx = L / (nx - 1)
         
         P, Pold = self.get_pressure_array()
         α, αold = self.get_vol_frac_array()  

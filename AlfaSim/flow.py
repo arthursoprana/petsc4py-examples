@@ -36,31 +36,7 @@ class Solver(object):
         self.F = dmda.createGlobalVec()
         self.X = dmda.createGlobalVec()
         self.Xold = dmda.createGlobalVec()
-        
-        options = PETSc.Options()
-        if options.getString('snes_type') in [self.snes.Type.VINEWTONRSLS, self.snes.Type.VINEWTONSSLS]:
-            snesvi = self.snes
             
-            xl = np.zeros((nx, dof))
-            xl[:,:nphases] = -100
-            xl[:,-1] = 0
-            xl[:, 2] = 0    
-            xl[:, 3] = 0    
-            
-            xu = np.zeros((nx, dof))    
-            xu[:,:nphases] =  100
-            xu[:,-1] = 100
-            xu[:, 2] = 1
-            xu[:, 3] = 1
-                 
-            xlVec = dmda.createGlobalVec()
-            xuVec = dmda.createGlobalVec()   
-            xlVec.setArray(xl.flatten())
-            xuVec.setArray(xu.flatten())    
-    
-            snesvi.setVariableBounds(xlVec, xuVec)
-            
-        self.snes.setUpdate(self.update_function)
         self.snes.setFunction(self.form_function, self.F)
         self.snes.setUseFD() # Enables coloring, same as -snes_fd_color
         self.snes.setFromOptions()
@@ -101,11 +77,8 @@ class Solver(object):
                 αG = α[:, 0]
                 αL = α[:, 1]
                 UG = U[:, 0]
-                UL = U[:, 1]  
-                idx = UG.argmax()
-                idx1 = αG.argmin()
                 print('************  \n  \tΔt = %gs\t t = %gs and max α is %g' % (self.Δt, self.current_time, α.max()))
-#                 print(idx, αG[idx-10:idx+1], self.H[idx-10:idx+1], UG.max(), UG[idx-1], UG[idx-4])
+
             else:
                 print('************  \n  \tΔt = %gs\t t = %gs' % (self.Δt, self.current_time))
             max_iter = 10
@@ -125,90 +98,45 @@ class Solver(object):
                 α[:, 1] = αL / αTotal
                 U[:, 0] *= αfTotal
                 U[:, 1] *= αfTotal
-#                 α[:, 0] = np.minimum(α[:, 0], 1.0)
-#                 α[:, 0] = np.maximum(α[:, 0], 0.0)
-#                 α[:, 1] = np.minimum(α[:, 1], 1.0)
-#                 α[:, 1] = np.maximum(α[:, 1], 0.0)
-#                 
-#                 U[:, 0] = np.where(α[:, 0] == 0.0, U[:, 1], U[:, 0])
-#                 α[:, 1] = α[:, 1] / (α[:, 0] + α[:, 1])
-
 
                 if self.snes.converged:
                     break
                 else:
-#                     J, P, _ = self.snes.getJacobian()
-#                     F = self.snes.getFunction()[0]
-#                     J.zeroEntries()
-#                     P.zeroEntries()
-#                     F.zeroEntries()
                     self.X = self.Xold.copy()
                     self.Δt = 0.5*self.Δt
                     
             self.Xold = self.X.copy()
             self.current_time += self.Δt
             
+            uold = self.Xold[...].reshape(nx, dof)  
+            Pold = uold[:, -1]
+            for phase in range(nphases):            
+                self.ρref[:, phase] = density_model[phase](Pold*1e5)
+            
             if self.current_time > 0.001:
                 self.Δt = np.maximum(self.min_Δt, np.minimum(self.Δt*1.1, self.max_Δt))
-            
-    def update_function(self, snes, step):
-        
-        nphases = self.nphases
-        
-        dof = self.dof
-        nx  = self.nx   
-   
-        sol = snes.getSolution()[...]
-        u = sol.reshape(nx, dof)         
-        U = u[:, 0:nphases]
-        α = u[:, nphases:-1] # view!
-#         αG = α[:, 0].copy()
-#         αL = α[:, 1].copy()
-#         αTotal = αG + αL
-#         αfTotal = 0.5 * (αTotal[:-1] + αTotal[1:])               
-#         αfTotal = np.concatenate(([αfTotal[0]], αfTotal))
-#         α[:, 0] = αG / αTotal
-#         α[:, 1] = αL / αTotal
-#         U[:, 0] *= αfTotal
-#         U[:, 1] *= αfTotal
-#         print('max α is %g' % (α.max()))
-        P = u[:, -1]
-#         print('α', α.min(), α.max())
-        
-        # Compute ref density
-        uold = self.Xold[...].reshape(nx, dof)  
-        Pold = uold[:, -1]
-        for phase in range(nphases):            
-            self.ρref[:, phase] = density_model[phase](Pold*1e5)
-            
-        # Compute geometric properties
-        self.Dh, self.Sw, self.Si, self.H = computeGeometricProperties(α, self.D)
-
-        
+                    
     def form_function(self, snes, X, F):       
         L   = self.L
         dof = self.dof
         nx  = self.nx
-        nphases = self.nphases
         dt = self.Δt
+        dx = L / (nx - 1)
+        
+        nphases = self.nphases
+        u = X.getArray(readonly=True)
+        u = u.reshape(nx, dof)        
+        U = u[:, 0:nphases]
+        α = u[:, nphases:-1]
+        P = u[:, -1]
 
         uold = self.Xold.getArray()
-        u    = X.getArray(readonly=True)
-        udot = (u - uold) / dt
-        
+        udot = (u - uold) / dt        
         udot = udot.reshape(nx, dof)
         
         dtU = udot[:, 0:nphases]
         dtα = udot[:, nphases:-1]
         dtP = udot[:, -1]
-        
-        u = u.reshape(nx, dof)
-        
-        U = u[:, 0:nphases]
-        α = u[:, nphases:-1]
-        P = u[:, -1]
-
-        dx = L / (nx - 1)
 
         residual = calculate_residual(dt, U, dtU, α, dtα, P, dtP, dx, nx, dof, self.Mpresc, self.Ppresc, 
                                       self.ρref, self.D, self.Dh, self.Sw, self.Si, None, None)
