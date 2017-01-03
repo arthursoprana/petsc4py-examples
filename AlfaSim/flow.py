@@ -124,16 +124,16 @@ class Solver(object):
         dx = L / (nx - 1)
         
         nphases = self.nphases
+        uold = self.Xold.getArray()
         u = X.getArray(readonly=True)
+        udot = (u - uold) / dt   
+             
         u = u.reshape(nx, dof)        
         U = u[:, 0:nphases]
         α = u[:, nphases:-1]
         P = u[:, -1]
 
-        uold = self.Xold.getArray()
-        udot = (u - uold) / dt        
-        udot = udot.reshape(nx, dof)
-        
+        udot = udot.reshape(nx, dof)        
         dtU = udot[:, 0:nphases]
         dtα = udot[:, nphases:-1]
         dtP = udot[:, -1]

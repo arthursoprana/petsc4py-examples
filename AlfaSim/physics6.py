@@ -225,7 +225,7 @@ def calculate_residual_mom(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof, Mpr
         # Momentum balance for half control volume
         f[-1, phase] += \
             + (ρf[-1] * αf[-1] * U[-1] - ρfold[-1] * αfold[-1] * Uold[-1]) * ΔV/dt * 0.5 \
-            + α[-2] * ρ[-2] * U[-1] * A * U[-1] \
+            + α[-2] * ρ[-2] *  U[-1] * A * U[-1] \
             - α[-2] * ρ[-2] * Uc[-1] * A * ((0.5 - β[-1]) * U[-1] + (0.5 + β[-1]) * U[-2]) \
             + αf[-1] * (Ppresc - P[-2]) * 1e5 * A \
             + αf[-1] * ρf[-1] * g * np.cos(θ) * A * (H[-1] - H[-2])  \

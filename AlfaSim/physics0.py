@@ -198,8 +198,8 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
             + ρf[-1] *  U[-1] * dtαc[-1] * ΔV * 0.5 \
             + ρf[-1] * αf[-1] * dtU[-1] * ΔV * 0.5 \
             +  U[-1] * αf[-1] * c[-1] * dtPc[-1] * 1e5 * ΔV * 0.5 \
-            + α[-1] * ρ[-1] * U[-1] * A * U[-1] \
-            - α[-1] * ρ[-1] * Uc[-1] * A * ((0.5 - β[-1]) * U[-1] + (0.5 + β[-1]) * U[-2]) \
+            + α[-2] * ρ[-2] *  U[-1] * A * U[-1] \
+            - α[-2] * ρ[-2] * Uc[-1] * A * ((0.5 - β[-1]) * U[-1] + (0.5 + β[-1]) * U[-2]) \
             + αf[-1] * (Ppresc - P[-2]) * 1e5 * A \
             + αf[-1] * ρf[-1] * g * np.cos(θ) * A * (H[-1] - H[-2])  \
             + τw[-1] * (Swf[-1] / A) * ΔV * 0.5 + sign_τ[phase] * τi[-1] * (Sif[-1] / A) * ΔV * 0.5 \
@@ -233,7 +233,7 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
         f[0,phase] = -(Mpresc[phase] - αα[0] * ρρ[0] * U[0] * A)
         
         # Mass
-        f[-1,phase+nphases] = -(α[-2] - α[-1])
+        f[-1,phase+nphases] = α[-1] - α[-2]
     
     f[:-1, -1] = 1 - αTotal[:-1]
 
