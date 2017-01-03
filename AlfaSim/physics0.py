@@ -18,15 +18,15 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
     αTotal = αG + αL 
     
 #     αT = np.zeros((nx, nphases))   
-#  
+#   
 #     αT[:, 0] = αG / (αG + αL)
 #     αT[:, 1] = αL / (αG + αL)    
-     
-    αGf = 0.5 * (αG[:-1] + αG[1:])   
-    αLf = 0.5 * (αL[:-1] + αL[1:])   
-    αGf = np.concatenate(([αGf[0]], αGf))
-    αLf = np.concatenate(([αLf[0]], αLf))
-           
+#      
+#     αGf = 0.5 * (αG[:-1] + αG[1:])   
+#     αLf = 0.5 * (αL[:-1] + αL[1:])   
+#     αGf = np.concatenate(([αGf[0]], αGf))
+#     αLf = np.concatenate(([αLf[0]], αLf))
+#            
 #     UG = UT[:, 0]                 
 #     UL = UT[:, 1]  
 #     UT = np.zeros((nx, nphases))   
@@ -137,7 +137,7 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
         ######################################
         # MASS FLUXES
         ρρ = np.concatenate(([ρ[0]], ρ))
-        αα = np.concatenate(([10], α))
+        αα = np.concatenate(([α[0]], α))
         β = np.where(U > 0.0, 0.5, -0.5) 
         
         me = ((0.5 - β[1:  ]) * ρ[1:  ] * α[1:  ] + (0.5 + β[1:  ]) *  ρ[ :-1]  * α[ :-1]) * U[1:  ] * A
@@ -160,10 +160,6 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
         
         θ = 0.0 # for now        
         
-        αfpress = αf.copy()
-        αfpress = np.where(αfpress < 1e-3, 0.0, αfpress)
-
-        
         β = np.where(Uc > 0.0, 0.5, -0.5)
         # center momentum
 #         f[1:-1, phase] += \
@@ -176,8 +172,8 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
 #             + αf[1:-1] * ρf[1:-1] * g * np.cos(θ) * A * (H[1:-1] - H[:-2]) \
 #             + τw[1:-1] * (Swf[1:-1] / A) * ΔV + sign_τ[phase] * τi[1:-1] * (Sif[1:-1] / A) * ΔV \
 #             + αf[1:-1] * (Pd[1:-1] - Pd[:-2]) * A
-        
-        # Momentum balance for half control volume
+#            
+#         #Momentum balance for half control volume
 #         f[-1, phase] += \
 #             + ρf[-1] *  U[-1] * dtαc[-1] * ΔV * 0.5 \
 #             + ρf[-1] * αf[-1] * dtU[-1] * ΔV * 0.5 \
@@ -209,15 +205,14 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
             + τw[-1] * (Swf[-1] / A) * ΔV * 0.5 + sign_τ[phase] * τi[-1] * (Sif[-1] / A) * ΔV * 0.5 \
             + αf[-1] * (Pd[-1] - Pd[-2]) * A
         
-#         f[1:, phase] /= 1e5
+        f[1:, phase] /= 1e5
         
         ######################################
         ######################################
         # MASS CENTRAL NODES
         ρρ = np.concatenate(([ρ[0]], ρ))
-        αα = np.concatenate(([1], α))
-        β = np.where(U > 0.0, 0.5, -0.5) 
-        
+        αα = np.concatenate(([α[0]], α))
+        β = np.where(U > 0.0, 0.5, -0.5)         
         
         fp =  \
             + ρ[:-1] * dtα[:-1] * ΔV \
@@ -225,7 +220,6 @@ def calculate_residualαUP(dt, UT, dtUT, αT, dtαT, P, dtP, dx, nx, dof, Mpresc
             + ((0.5 - β[1:  ]) * ρ[1:  ] * α[1:  ] + (0.5 + β[1:  ]) *  ρ[ :-1]  * α[ :-1]) * U[1:  ] * A \
             - ((0.5 - β[ :-1]) * ρ[ :-1] * α[ :-1] + (0.5 + β[ :-1]) * ρρ[ :-2] * αα[ :-2]) * U[ :-1] * A  
         f[:-1, phase+nphases] += fp
-#         f[:-1, -1] += fp
         ######################################
    
 #         f[:-1, -1] += f[:-1, phase+nphases]

@@ -10,9 +10,9 @@ petsc4py.init(sys.argv)
 options = PETSc.Options()
 options.clear()
 
-options.setValue('-mat_fd_type', 'ds')
-options.setValue('-mat_fd_coloring_err', 1e-2)
-options.setValue('-mat_fd_coloring_umin', 1e-3)
+# options.setValue('-mat_fd_type', 'ds')
+# options.setValue('-mat_fd_coloring_err', 1e-2)
+# options.setValue('-mat_fd_coloring_umin', 1e-3)
 
 # options.setValue('-mat_view', 'draw')
 # options.setValue('-draw_pause', 5000)
@@ -84,6 +84,15 @@ initial_solution[:,3] = 1-αG # vol frac
 initial_solution[:,-1] = np.linspace(1.0,1.0,num=nx)  # Pressure
 initial_time = 0.0
 
+RESTART = True
+if RESTART:
+    α = np.load('W:\\vol_frac1.npy')
+    P = np.load('W:\\pressure1.npy')
+    U = np.load('W:\\velocity1.npy')
+    initial_solution[:,0:nphases] = U # Velocity
+    initial_solution[:,nphases:-1] = α # vol frac
+    initial_solution[:,-1] = P   # Pressure
+    
 f, axarr = plt.subplots(4, sharex=True, figsize=(16, 10))
 sols = []
 for i, final_time in enumerate(time_intervals):
@@ -107,6 +116,12 @@ for i, final_time in enumerate(time_intervals):
     P = solpress[...].copy()
     U = solmom[...].reshape(nx, nphases).copy()
     
+#     if final_time < 11.2 and not RESTART:
+#     print('\t\t\t\t *************** SAVING FOR RESTART')
+#     np.save('W:\\vol_frac', α)
+#     np.save('W:\\pressure', P)
+#     np.save('W:\\velocity', U)
+        
     initial_solution[:,0:nphases] = U # Velocity
     initial_solution[:,nphases:-1] = α # vol frac
     initial_solution[:,-1] = P   # Pressure

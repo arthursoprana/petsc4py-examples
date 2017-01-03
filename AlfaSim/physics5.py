@@ -984,7 +984,7 @@ def calculate_coeff_mom(dt, UT, UTold, αT, αTold, P, Pold, dx, nx, dof, Mpresc
          
         Ap_uT[0, phase] = ρf[0] * αf[0] * ΔV/dt * 0.5\
             + α[0] * ρ[0] * Uc[0] * A * ((0.5 + β[0]) ) \
-            - α[0] * ρ[0] * U[0] * A \
+            - Mpresc[phase] \
             + 0.5 * fw[0] * ρf[0] * np.abs( U[0]) * (Swf[0] / A) * ΔV * 0.5\
             + 0.5 * fi[0] * ρGf[0] * np.abs(Ur[0]) * (Sif[0] / A) * ΔV * 0.5
                

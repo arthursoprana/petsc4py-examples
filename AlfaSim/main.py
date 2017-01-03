@@ -27,7 +27,7 @@ options.setValue('-snes_max_it', 10)
 
 options.setValue('-snes_stol', 1e-50)
 options.setValue('-snes_rtol', 1e-50)
-options.setValue('-snes_atol', 1e-5)
+options.setValue('-snes_atol', 1e-6)
 
 # pc config For direct solver
 options.setValue('pc_type', 'lu')
@@ -50,7 +50,7 @@ options.setValue('-snes_type', 'newtonls')
 # options.setValue('-sub_1_snes_linesearch_type', 'basic')
 # # options.setValue('-sub_1_npc_snes_type', 'ngs')
 
-options.setValue('-snes_linesearch_type', 'basic')
+options.setValue('-snes_linesearch_type', 'l2')
 # time_intervals = np.linspace(0.1, 25, num=250) # [s]
 time_intervals = np.linspace(0.1, 200, num=2500) # [s]
 # time_intervals = [20.0]
@@ -78,6 +78,15 @@ initial_solution[:,3] = 1-αG # vol frac
 initial_solution[:,-1] = 1.0  # Pressure
 initial_time = 0.0
 
+RESTART = True
+if RESTART:
+    α = np.load('W:\\vol_frac1.npy')
+    P = np.load('W:\\pressure1.npy')
+    U = np.load('W:\\velocity1.npy')
+    initial_solution[:,0:nphases] = U # Velocity
+    initial_solution[:,nphases:-1] = α # vol frac
+    initial_solution[:,-1] = P   # Pressure
+    
 f, axarr = plt.subplots(4, sharex=True, figsize=(12,8))
 sols = []
 for i, final_time in enumerate(time_intervals):
@@ -116,6 +125,11 @@ for i, final_time in enumerate(time_intervals):
     xx = np.concatenate((x[:-1], [pipe_length]))
 
 
+#     print('\t\t\t\t *************** SAVING FOR RESTART')
+#     np.save('W:\\vol_frac1', α)
+#     np.save('W:\\pressure1', P)
+#     np.save('W:\\velocity1', U)
+    
     UU = U
     PP = np.concatenate((P[:-1], [1.0]))
     αα = α
@@ -130,7 +144,7 @@ for i, final_time in enumerate(time_intervals):
     axarr[2].plot(xx, αα*UU, '-', linewidth=2)
     axarr[3].plot(xx, PP, 'r-', linewidth=2)
     plt.xlim(0, pipe_length)
-    axarr[0].set_ylim(0, 2)
+    axarr[0].set_ylim(0, 1)
     plt.draw()
     plt.pause(0.0001)
     

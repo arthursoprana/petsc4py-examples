@@ -119,10 +119,8 @@ class Solver(object):
                 αL = α[:, 1].copy()
                 αTotal = αG + αL
                 U = u[:, 0:nphases] # view!
-
                 αfTotal = 0.5 * (αTotal[:-1] + αTotal[1:])               
-                αfTotal = np.concatenate(([αfTotal[0]], αfTotal))
-        
+                αfTotal = np.concatenate(([αfTotal[0]], αfTotal))        
                 α[:, 0] = αG / αTotal
                 α[:, 1] = αL / αTotal
                 U[:, 0] *= αfTotal
@@ -185,27 +183,6 @@ class Solver(object):
             
         # Compute geometric properties
         self.Dh, self.Sw, self.Si, self.H = computeGeometricProperties(α, self.D)
-
-
-#         if step > 0:
-#             J,P,_ = snes.getJacobian()
-#             ΔX = snes.getSolutionUpdate()
-#             F = snes.getFunction()[0]
-#             
-#             ksp = snes.getKSP()
-#             ksp.setOperators(A=J, P=P)
-#             ksp.solve(b=-F, x=ΔX)
-#             
-#             J = J[0:nx*dof, 0:nx*dof]
-#             P = P[0:nx*dof, 0:nx*dof]
-#             F = F[...]
-#             I = np.identity(dof*nx)
-#             Δx_numpy = np.linalg.solve(J, -F)
-#             Q = J.copy()
-#             Q[J.diagonal() == 0, J.diagonal() == 0] = 1e-6
-#             Δx_numpy = np.linalg.solve(Q, -F)
-#             print('in jac', np.linalg.norm(ΔX[...] - Δx_numpy))
-
 
         
     def form_function(self, snes, X, F):       

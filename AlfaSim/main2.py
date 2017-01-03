@@ -69,7 +69,7 @@ dof = nphases * 2 + 1
 
     
 Ppresc  = 1.0 # [bar]
-Mpresc = [0.002, 0.3] # [kg/s]    
+Mpresc = [0.02, 3.0] # [kg/s]    
 
 diameter = 0.1 # [m]
 pipe_length = 100.0 # [m]
@@ -84,6 +84,15 @@ initial_solution[:,3] = 1-αG # vol frac
 initial_solution[:,-1] = np.linspace(1.0,1.0,num=nx)  # Pressure
 initial_time = 0.0
 
+RESTART = True
+if RESTART:
+    α = np.load('W:\\vol_frac1.npy')
+    P = np.load('W:\\pressure1.npy')
+    U = np.load('W:\\velocity1.npy')
+    initial_solution[:,0:nphases] = U # Velocity
+    initial_solution[:,nphases:-1] = α # vol frac
+    initial_solution[:,-1] = P   # Pressure
+    
 f, axarr = plt.subplots(4, sharex=True, figsize=(16, 10))
 sols = []
 for i, final_time in enumerate(time_intervals):
