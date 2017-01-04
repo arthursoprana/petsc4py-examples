@@ -73,8 +73,10 @@ class Solver(object):
                 self.snes.solve(None, self.X)
                 
                 self.normalize_vol_frac()
-
-                if self.snes.converged:
+                
+                vol_frac_out_of_range = self.check_vol_frac_out_of_range()
+                
+                if self.snes.converged and not vol_frac_out_of_range:
                     break
                 else:
                     self.X = self.Xold.copy()
@@ -88,7 +90,11 @@ class Solver(object):
             if self.current_time > 0.001:
                 self.Δt = np.maximum(self.min_Δt, np.minimum(self.Δt*1.1, self.max_Δt))
                     
-                    
+    
+    def check_vol_frac_out_of_range(self):
+        _, α, _, _, _, _ = self.get_UαP_array()
+        return np.logical_or(np.any(α < 0), np.any(α > 1))
+              
     def form_function(self, snes, X, F):       
         L   = self.L
         dof = self.dof
