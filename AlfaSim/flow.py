@@ -79,6 +79,7 @@ class Solver(object):
                 if self.snes.converged and not vol_frac_out_of_range:
                     break
                 else:
+                    print('\t\t ******* BREAKING TIMESTEP %i *******' % i)
                     self.X = self.Xold.copy()
                     self.Δt = 0.5*self.Δt
                     
@@ -86,9 +87,8 @@ class Solver(object):
             self.current_time += self.Δt
             
             self.update_ref_density()            
-            
-            if self.current_time > 0.001:
-                self.Δt = np.maximum(self.min_Δt, np.minimum(self.Δt*1.1, self.max_Δt))
+
+            self.Δt = np.maximum(self.min_Δt, np.minimum(self.Δt*1.1, self.max_Δt))
                     
     
     def check_vol_frac_out_of_range(self):
@@ -136,7 +136,7 @@ class Solver(object):
         return U, α, P, dtU, dtα, dtP
                       
     def normalize_vol_frac(self):
-        U, α, P, dtU, dtα, dtP = self.get_UαP_array()
+        U, α, _, _, _, _ = self.get_UαP_array()
         
         αG = α[:, 0].copy()
         αL = α[:, 1].copy()
@@ -152,13 +152,10 @@ class Solver(object):
         
     
     def update_ref_density(self):
-        nphases = self.nphases
-        dof = self.dof
-        nx  = self.nx
-        uold = self.Xold[...].reshape(nx, dof)  
-        Pold = uold[:, -1]
+        nphases = self.nphases        
+        _, _, P, _, _, _ = self.get_UαP_array()        
         for phase in range(nphases):            
-            self.ρref[:, phase] = density_model[phase](Pold*1e5)     
+            self.ρref[:, phase] = density_model[phase](P*1e5)     
                    
                    
 def transient_pipe_flow_1D(

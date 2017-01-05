@@ -171,8 +171,8 @@ def computeGeometricProperties(α, D):
     Sw = 0.5 * δ * D  
     H = 0.5 * D * (1.0 - np.cos(0.5 * angle))
     
-    H = np.minimum(H, D)
-    H = np.maximum(H, 0)
+    assert np.all(H - D <= 0.0), 'Height must be less than diameter!'
+    assert np.all(H > 0.0), 'Height must non-negative!'
     
     A = 0.25 * np.pi * D ** 2 
     Dh = np.zeros_like(α)

@@ -27,7 +27,7 @@ options.setValue('-snes_max_it', 10)
 
 options.setValue('-snes_stol', 1e-50)
 options.setValue('-snes_rtol', 1e-50)
-options.setValue('-snes_atol', 1e-6)
+options.setValue('-snes_atol', 1e-4)
 
 # pc config For direct solver
 options.setValue('pc_type', 'lu')
@@ -38,9 +38,16 @@ options.setValue('pc_factor_shift_type', 'NONZERO')
 
 # Normal volume fractions, pure newton is ok
 αG = 1e-8
+if αG < 0.01:
+    options.setValue('-npc_snes_type', 'nrichardson') # nrichardson is GOOD when αG -> 0
+    options.setValue('-snes_convergence_test', 'skip')
+    options.setValue('-snes_max_it', 2)
+    
 options.setValue('-snes_type', 'newtonls')
-# options.setValue('-snes_type', 'vinewtonrsls')
-# options.setValue('-npc_snes_type', 'ngs')
+options.setValue('-snes_linesearch_type', 'bt')
+
+# options.setValue('-snes_type', 'vinewtonssls')
+# options.setValue('-snes_vi_zero_tolerance', 1e-5)
 
 # options.setValue('-snes_type', 'composite')
 # options.setValue('-snes_composite_type', 'additiveoptimal')
@@ -50,13 +57,12 @@ options.setValue('-snes_type', 'newtonls')
 # options.setValue('-sub_1_snes_linesearch_type', 'basic')
 # # options.setValue('-sub_1_npc_snes_type', 'ngs')
 
-options.setValue('-snes_linesearch_type', 'l2')
 # time_intervals = np.linspace(0.1, 25, num=250) # [s]
 time_intervals = np.linspace(0.1, 200, num=2500) # [s]
 # time_intervals = [20.0]
-dt = 1e-3    # [s]
-dt_min = 1e-6 # [s]
-dt_max = 0.02  # [s]
+dt = 1e-4 # [s]
+dt_min = 1e-12 # [s]
+dt_max = 1e-2  # [s]
 
 
 nx = 1000
